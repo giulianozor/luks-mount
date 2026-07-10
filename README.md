@@ -26,15 +26,15 @@ sudo install -m 0755 lmount /usr/local/bin/
 ### Mount
 
 ```sh
-lmount <source>
-lmount -k <keyfile> -m <mountpoint> <source>
+lmount -s <source>
+lmount -s <source> -k <keyfile> -m <mountpoint>
 ```
 
-- `<source>` — path to a block device (e.g. `sda1` or `/dev/sda1`) or a file-backed container.
+- `-s` / `--source` — path to a block device (e.g. `sda1` or `/dev/sda1`) or a file-backed container.
 - `-k` / `--key` — optional path to a LUKS key file (ignored for non-LUKS sources).
-- `-m` / `--mount` — mount point (default: `~/<source-basename>`).
+- `-m` / `--mount` — mount point (default: `~/<source-basename>`). If a file already exists at the path, `.mnt` is appended automatically.
 
-Source resolution: if `<source>` does not exist as a file or directory, `/dev/<source>` is tried. The first existing path wins; if neither exists, the original value is passed through to `mount`.
+Source resolution: if the source path does not exist as a file or directory, `/dev/<source>` is tried. The first existing path wins; if neither exists, the original value is passed through to `mount`.
 
 Encryption is auto-detected via `cryptsetup isLuks`. LUKS sources are opened with `luksOpen` before mounting; plain sources are mounted directly.
 
@@ -50,16 +50,16 @@ Unmounts all mount points backed by the source (or `/dev/mapper/<source>` for LU
 
 ```sh
 # Mount a LUKS-encrypted device
-lmount sda1
+lmount -s sda1
 
 # Mount a plain device
-lmount /dev/sdb1
+lmount -s /dev/sdb1
 
 # Mount with a key file and custom mount point
-lmount -k /etc/luks/key -m /mnt/data sdb2
+lmount -s sdb2 -k /etc/luks/key -m /mnt/data
 
 # Mount a file-backed container (LUKS or plain)
-lmount /path/to/container.img
+lmount -s /path/to/container.img
 
 # Unmount and close
 lmount -u sda1
