@@ -1,10 +1,10 @@
 # lmount
 
-Mount and unmount devices and file-backed containers. Automatically detects LUKS encryption — when present, `luksOpen`/`luksClose` are used; plain sources are mounted directly.
+Mount, unmount, and create LUKS-encrypted devices and file-backed containers. Automatically detects LUKS encryption — when present, `luksOpen`/`luksClose` are used; plain sources are mounted directly.
 
 ## Requirements
 
-- Linux with `cryptsetup` and `mount` installed
+- Linux with `cryptsetup`, `mount`, `dd`, and `mkfs.ext4` installed
 - `sudo` access without password prompt for the relevant commands
 - Go 1.21+ (to build from source)
 
@@ -46,6 +46,28 @@ lmount -u <source>
 
 Unmounts all mount points backed by the source (or `/dev/mapper/<source>` for LUKS), removes the mount directories, and closes the LUKS mapping if present.
 
+### Create
+
+```sh
+lmount -c <name> -cs <size> [-ck <keyfile>] [-cks <key-size>]
+```
+
+Creates a LUKS-encrypted file-backed container:
+
+1. Creates the backing file with `dd` (zero-filled, progress shown).
+2. Formats it as a LUKS device with `cryptsetup luksFormat` (you will be prompted for a passphrase; the YES confirmation is skipped via `--batch-mode`).
+3. Optionally adds a key file to the LUKS slot.
+4. Opens the device, creates an `ext4` filesystem (no reserved blocks), and closes it.
+
+Minimum container size is 32M.
+
+- `-c` / `--create` — name of the container file to create.
+- `-cs` / `--size` — size with suffix `M` or `G` (e.g. `100M`, `2G`). The block size is chosen by tier to balance speed and waste: ≤1 GiB uses 1–32 MiB blocks, 1–10 GiB uses 256 MiB, 10–100 GiB uses 512 MiB, >100 GiB uses 1024 MiB. The count is calculated to produce the smallest image at least the requested size.
+- `-ck` / `--create-key-file` — optional path for a key file. When set, a random key file is generated and added to the LUKS slots.
+- `-cks` / `--key-size` — key file size in bytes (default: 512). Ignored if `-ck` is not used.
+
+When `-c` is used, `-s` and `-u` are ignored.
+
 ## Examples
 
 ```sh
@@ -63,6 +85,12 @@ lmount -s /path/to/container.img
 
 # Unmount and close
 lmount -u sda1
+
+# Create a 100 MiB LUKS container
+lmount -c mycontainer.img -cs 100M
+
+# Create a 2 GiB LUKS container with a key file
+lmount -c mycontainer.img -cs 2G -ck mykeyfile -cks 1024
 ```
 
 ## Development
@@ -71,4 +99,18 @@ lmount -u sda1
 make build   # compile
 make test    # run tests
 make clean   # remove binary
+```
+
+### Test Fixtures
+
+```
+test/
+  test        32 MiB LUKS v2 container (passphrase: 1234)
+  test.key    512-byte key file for ./test/test
+```
+
+The volume contains a `test` text file with `"test"` inside. Mount with:
+
+```sh
+lmount -s test/test -k test/test.key
 ```
