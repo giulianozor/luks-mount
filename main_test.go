@@ -697,6 +697,191 @@ func TestUsageContainsCreateFlags(t *testing.T) {
 	}
 }
 
+func TestExpandContainer(t *testing.T) {
+	t.Run("success without key file", func(t *testing.T) {
+		dir := t.TempDir()
+		f := filepath.Join(dir, "test.img")
+		os.WriteFile(f, []byte("initial"), 0644)
+
+		var calls []cmdCall
+		run := func(name string, args ...string) error {
+			calls = append(calls, cmdCall{name, args})
+			return nil
+		}
+
+		err := expandContainer(run, f, "256M", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// dd, luksOpen, fsck (pre), resize2fs, fsck (post), luksClose = 6
+		if len(calls) != 6 {
+			t.Fatalf("expected 6 calls, got %d: %v", len(calls), calls)
+		}
+
+		// dd with append
+		if calls[0].name != "dd" {
+			t.Errorf("call 0: expected dd, got %s", calls[0].name)
+		}
+		hasAppend := false
+		for _, a := range calls[0].args {
+			if a == "oflag=append" {
+				hasAppend = true
+				break
+			}
+		}
+		if !hasAppend {
+			t.Errorf("dd args missing oflag=append: %v", calls[0].args)
+		}
+
+		// luksOpen
+		if calls[1].name != "cryptsetup" || len(calls[1].args) < 1 || calls[1].args[0] != "luksOpen" {
+			t.Errorf("call 1: expected cryptsetup luksOpen, got %v", calls[1])
+		}
+
+		// fsck pre
+		if calls[2].name != "fsck.ext4" {
+			t.Errorf("call 2: expected fsck.ext4, got %s", calls[2].name)
+		}
+
+		// resize2fs
+		if calls[3].name != "resize2fs" {
+			t.Errorf("call 3: expected resize2fs, got %s", calls[3].name)
+		}
+
+		// fsck post
+		if calls[4].name != "fsck.ext4" {
+			t.Errorf("call 4: expected fsck.ext4, got %s", calls[4].name)
+		}
+
+		// luksClose
+		if calls[5].name != "cryptsetup" || len(calls[5].args) < 1 || calls[5].args[0] != "luksClose" {
+			t.Errorf("call 5: expected cryptsetup luksClose, got %v", calls[5])
+		}
+	})
+
+	t.Run("success with key file", func(t *testing.T) {
+		dir := t.TempDir()
+		f := filepath.Join(dir, "test.img")
+		os.WriteFile(f, []byte("initial"), 0644)
+
+		var calls []cmdCall
+		run := func(name string, args ...string) error {
+			calls = append(calls, cmdCall{name, args})
+			return nil
+		}
+
+		err := expandContainer(run, f, "256M", "/path/to/key")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(calls) < 2 {
+			t.Fatal("expected at least 2 calls")
+		}
+		// luksOpen should have --key-file
+		luksOpenCall := calls[1]
+		if luksOpenCall.name != "cryptsetup" {
+			t.Fatalf("call 1 expected cryptsetup, got %s", luksOpenCall.name)
+		}
+		foundKey := false
+		for i, a := range luksOpenCall.args {
+			if a == "--key-file" && i+1 < len(luksOpenCall.args) && luksOpenCall.args[i+1] == "/path/to/key" {
+				foundKey = true
+				break
+			}
+		}
+		if !foundKey {
+			t.Errorf("luksOpen missing --key-file /path/to/key: %v", luksOpenCall.args)
+		}
+	})
+
+	t.Run("file does not exist", func(t *testing.T) {
+		run := func(name string, args ...string) error { return nil }
+		err := expandContainer(run, "/nonexistent/file", "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "stat") {
+			t.Errorf("expected stat error, got %v", err)
+		}
+	})
+
+	t.Run("invalid size", func(t *testing.T) {
+		dir := t.TempDir()
+		f := filepath.Join(dir, "test.img")
+		os.WriteFile(f, []byte("x"), 0644)
+
+		run := func(name string, args ...string) error { return nil }
+		err := expandContainer(run, f, "invalid", "")
+		if err == nil {
+			t.Error("expected error for invalid size, got nil")
+		}
+	})
+
+	t.Run("dd fails", func(t *testing.T) {
+		dir := t.TempDir()
+		f := filepath.Join(dir, "test.img")
+		os.WriteFile(f, []byte("x"), 0644)
+
+		run := func(name string, args ...string) error {
+			if name == "dd" {
+				return errors.New("dd failed")
+			}
+			return nil
+		}
+		err := expandContainer(run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "expanding container") {
+			t.Errorf("expected expand error, got %v", err)
+		}
+	})
+
+	t.Run("luksOpen fails cleans up", func(t *testing.T) {
+		dir := t.TempDir()
+		f := filepath.Join(dir, "test.img")
+		os.WriteFile(f, []byte("x"), 0644)
+
+		var closeCalled bool
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				return errors.New("open fail")
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				closeCalled = true
+			}
+			return nil
+		}
+		err := expandContainer(run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "luksOpen failed") {
+			t.Errorf("expected luksOpen error, got %v", err)
+		}
+		if closeCalled {
+			t.Error("luksClose should not be called when luksOpen itself failed")
+		}
+	})
+
+	t.Run("fsck pre fails cleans up luksClose", func(t *testing.T) {
+		dir := t.TempDir()
+		f := filepath.Join(dir, "test.img")
+		os.WriteFile(f, []byte("x"), 0644)
+
+		var closeCalled bool
+		run := func(name string, args ...string) error {
+			if name == "fsck.ext4" && len(args) > 1 && args[0] == "-f" && args[1] == "-y" {
+				return errors.New("fsck fail")
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				closeCalled = true
+			}
+			return nil
+		}
+		err := expandContainer(run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "fsck.ext4 (pre)") {
+			t.Errorf("expected fsck pre error, got %v", err)
+		}
+		if !closeCalled {
+			t.Error("expected luksClose after fsck pre failure")
+		}
+	})
+}
+
 func TestCreateContainerBlockSize(t *testing.T) {
 	tests := []struct {
 		size      string

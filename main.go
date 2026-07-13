@@ -103,6 +103,30 @@ func parseSize(s string) (int64, error) {
 	}
 }
 
+func calcBlockSize(total int64) int64 {
+	const _1M = int64(1024 * 1024)
+	const _1G = int64(1024 * 1024 * 1024)
+
+	switch {
+	case total <= _1G:
+		totalMib := (total + _1M - 1) / _1M
+		bsMib := totalMib
+		if bsMib > 32 {
+			bsMib = 32
+		}
+		if bsMib < 1 {
+			bsMib = 1
+		}
+		return bsMib * _1M
+	case total <= 10*_1G:
+		return 256 * _1M
+	case total <= 100*_1G:
+		return 512 * _1M
+	default:
+		return 1024 * _1M
+	}
+}
+
 func createContainer(runSudo, runDirect func(name string, args ...string) error, name, size, keyFile string, keySize int) error {
 	total, err := parseSize(size)
 	if err != nil {
@@ -115,27 +139,8 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	const _1M = int64(1024 * 1024)
-	const _1G = int64(1024 * 1024 * 1024)
 
-	var blockSize int64
-	switch {
-	case total <= _1G:
-		totalMib := (total + _1M - 1) / _1M
-		bsMib := totalMib
-		if bsMib > 32 {
-			bsMib = 32
-		}
-		if bsMib < 1 {
-			bsMib = 1
-		}
-		blockSize = bsMib * _1M
-	case total <= 10*_1G:
-		blockSize = 256 * _1M
-	case total <= 100*_1G:
-		blockSize = 512 * _1M
-	default:
-		blockSize = 1024 * _1M
-	}
+	blockSize := calcBlockSize(total)
 	count := (total + blockSize - 1) / blockSize
 
 	if keyFile != "" {
@@ -189,6 +194,71 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	fmt.Println("Done.")
+	return nil
+}
+
+func expandContainer(runSudo func(name string, args ...string) error, filename, size, keyFile string) error {
+	total, err := parseSize(size)
+	if err != nil {
+		return err
+	}
+
+	fi, err := os.Stat(filename)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", filename, err)
+	}
+	oldSize := fi.Size()
+
+	const _1M = int64(1024 * 1024)
+	blockSize := calcBlockSize(total)
+	count := (total + blockSize - 1) / blockSize
+
+	bsStr := fmt.Sprintf("%dM", blockSize/_1M)
+	if err := runSudo("dd", "if=/dev/zero", "of="+filename, "bs="+bsStr, fmt.Sprintf("count=%d", count), "oflag=append", "conv=notrunc", "status=progress"); err != nil {
+		return fmt.Errorf("expanding container: %w", err)
+	}
+
+	name := srcName(filename)
+	luksArgs := []string{"luksOpen"}
+	if keyFile != "" {
+		luksArgs = append(luksArgs, "--key-file", keyFile)
+	}
+	luksArgs = append(luksArgs, filename, name)
+	fmt.Printf("Opening LUKS container %s...\n", filename)
+	if err := runSudo("cryptsetup", luksArgs...); err != nil {
+		return fmt.Errorf("luksOpen failed: %w", err)
+	}
+
+	devMapper := "/dev/mapper/" + name
+
+	fmt.Printf("Checking filesystem %s...\n", devMapper)
+	if err := runSudo("fsck.ext4", "-f", "-y", devMapper); err != nil {
+		runSudo("cryptsetup", "luksClose", name)
+		return fmt.Errorf("fsck.ext4 (pre) failed: %w", err)
+	}
+
+	fmt.Printf("Resizing filesystem %s...\n", devMapper)
+	if err := runSudo("resize2fs", devMapper); err != nil {
+		runSudo("cryptsetup", "luksClose", name)
+		return fmt.Errorf("resize2fs failed: %w", err)
+	}
+
+	fmt.Printf("Checking filesystem %s...\n", devMapper)
+	if err := runSudo("fsck.ext4", "-f", "-y", devMapper); err != nil {
+		runSudo("cryptsetup", "luksClose", name)
+		return fmt.Errorf("fsck.ext4 (post) failed: %w", err)
+	}
+
+	fmt.Printf("Closing LUKS container %s...\n", name)
+	if err := runSudo("cryptsetup", "luksClose", name); err != nil {
+		return fmt.Errorf("luksClose failed: %w", err)
+	}
+
+	newFi, err := os.Stat(filename)
+	if err != nil {
+		return fmt.Errorf("stat %s after expand: %w", filename, err)
+	}
+	fmt.Printf("Old size: %d, New size: %d\n", oldSize, newFi.Size())
 	return nil
 }
 
@@ -327,11 +397,15 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  lmount -u <source>\n\n")
 	fmt.Fprintf(os.Stderr, "Create a LUKS container:\n")
 	fmt.Fprintf(os.Stderr, "  lmount -c <name> -cs <size> [-ck <keyfile>] [-cks <key-size>]\n\n")
+	fmt.Fprintf(os.Stderr, "Expand a LUKS container:\n")
+	fmt.Fprintf(os.Stderr, "  lmount -x <filename> -xs <size> [-k <keyfile>]\n\n")
 	fmt.Fprintf(os.Stderr, "Flags:\n")
 	fmt.Fprintf(os.Stderr, "  -c, --create <name>    Create a LUKS container\n")
 	fmt.Fprintf(os.Stderr, "  -cs, --size <size>     Container size with suffix M or G (e.g. 100M, 2G)\n")
 	fmt.Fprintf(os.Stderr, "  -ck, --create-key-file <path>  Path for the LUKS key file to create\n")
 	fmt.Fprintf(os.Stderr, "  -cks, --key-size <n>   Key file size in bytes (default: 512)\n")
+	fmt.Fprintf(os.Stderr, "  -x, --expand <file>    Expand a LUKS container file\n")
+	fmt.Fprintf(os.Stderr, "  -xs, --expand-size <size>  Expand size with suffix M or G (e.g. 100M, 2G)\n")
 	fmt.Fprintf(os.Stderr, "  -k, --key <file>       Path to key file\n")
 	fmt.Fprintf(os.Stderr, "  -m, --mount <dir>      Mount point (default: ~/<source basename>)\n")
 	fmt.Fprintf(os.Stderr, "  -u, --umount <source>  Source to unmount and close\n")
@@ -356,6 +430,10 @@ func main() {
 	createKeyFileLong := flag.String("create-key-file", "", "Path for the LUKS key file to create")
 	createKeySize := flag.Int("cks", 512, "Key file size in bytes")
 	createKeySizeLong := flag.Int("key-size", 512, "Key file size in bytes")
+	expandFlag := flag.String("x", "", "Expand a LUKS container file")
+	expandFlagLong := flag.String("expand", "", "Expand a LUKS container file")
+	expandSizeFlag := flag.String("xs", "", "Expand size with suffix M or G")
+	expandSizeFlagLong := flag.String("expand-size", "", "Expand size with suffix M or G")
 	help := flag.Bool("h", false, "Show help")
 	helpLong := flag.Bool("help", false, "Show help")
 
@@ -365,6 +443,26 @@ func main() {
 	if *help || *helpLong {
 		usage()
 		os.Exit(0)
+	}
+
+	expandVal := firstNonEmpty(*expandFlag, *expandFlagLong)
+	expandSizeVal := firstNonEmpty(*expandSizeFlag, *expandSizeFlagLong)
+
+	if expandVal != "" {
+		if expandSizeVal == "" {
+			fmt.Fprintf(os.Stderr, "Error: -xs/--expand-size is required with -x/--expand\n")
+			os.Exit(1)
+		}
+		if len(flag.Args()) > 0 {
+			fmt.Fprintf(os.Stderr, "Error: unexpected positional argument(s): %s\n", strings.Join(flag.Args(), " "))
+			os.Exit(1)
+		}
+		*keyFile = firstNonEmpty(*keyFile, *keyFileLong)
+		if err := expandContainer(runCmd, expandVal, expandSizeVal, *keyFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	*keyFile = firstNonEmpty(*keyFile, *keyFileLong)

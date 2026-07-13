@@ -68,6 +68,34 @@ Minimum container size is 32M.
 
 When `-c` is used, `-s` and `-u` are ignored.
 
+### Expand
+
+```sh
+lmount -x <filename> -xs <size> [-k <keyfile>]
+```
+
+Expands an existing LUKS-encrypted file-backed container by appending zero-filled space:
+
+1. Appends zeroes to the backing file with `dd` using the same block-size logic as `-c`.
+2. Opens the LUKS device (`--key-file` is respected when `-k` is set).
+3. Checks and resizes the ext4 filesystem to fill the available space, then checks again.
+4. Closes the LUKS device.
+5. Prints the old and new file sizes.
+
+The container must already be a LUKS device with an ext4 filesystem.
+
+- `-x` / `--expand` — path to the LUKS container file to expand.
+- `-xs` / `--expand-size` — additional size with suffix `M` or `G` (e.g. `100M`, `2G`).
+- `-k` / `--key` — optional path to a LUKS key file.
+
+When `-x` is used, `-s`, `-u`, and `-c` are ignored.
+
+### Expand with key file
+
+```sh
+lmount -x container.img -xs 500M -k mykeyfile
+```
+
 ## Examples
 
 ```sh
