@@ -3,391 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"os/user"
-	"path/filepath"
-	"strconv"
 	"strings"
 )
-
-func sudoCmd(name string, args ...string) *exec.Cmd {
-	return exec.Command("sudo", append([]string{name}, args...)...)
-}
-
-func runCmd(name string, args ...string) error {
-	cmd := sudoCmd(name, args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func runOutput(name string, args ...string) ([]byte, error) {
-	cmd := sudoCmd(name, args...)
-	cmd.Stderr = io.Discard
-	return cmd.Output()
-}
-
-func checkMapped(name string) bool {
-	_, err := os.Stat("/dev/mapper/" + name)
-	return err == nil
-}
-
-func srcName(path string) string {
-	if path == "" {
-		return ""
-	}
-	return filepath.Base(path)
-}
-
-func resolveSource(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	if _, err := os.Stat(raw); err == nil {
-		return raw
-	}
-	withDev := "/dev/" + raw
-	if _, err := os.Stat(withDev); err == nil {
-		return withDev
-	}
-	return raw
-}
-
-func firstNonEmpty(ss ...string) string {
-	for _, s := range ss {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
-func removeIfEmpty(path string) error {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return err
-	}
-	if len(entries) > 0 {
-		return nil
-	}
-	fmt.Printf("Removing mount point %s...\n", path)
-	return os.Remove(path)
-}
-
-func parseSize(s string) (int64, error) {
-	s = strings.TrimSpace(s)
-	if len(s) < 2 {
-		return 0, fmt.Errorf("invalid size %q: too short", s)
-	}
-	suffix := strings.ToUpper(s[len(s)-1:])
-	numStr := s[:len(s)-1]
-
-	num, err := strconv.ParseInt(numStr, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid size %q: %w", s, err)
-	}
-	if num <= 0 {
-		return 0, fmt.Errorf("invalid size %q: must be positive", s)
-	}
-
-	switch suffix {
-	case "M":
-		return num * 1024 * 1024, nil
-	case "G":
-		return num * 1024 * 1024 * 1024, nil
-	default:
-		return 0, fmt.Errorf("invalid size %q: suffix must be M or G", s)
-	}
-}
-
-func calcBlockSize(total int64) int64 {
-	const _1M = int64(1024 * 1024)
-	const _1G = int64(1024 * 1024 * 1024)
-
-	switch {
-	case total <= _1G:
-		totalMib := (total + _1M - 1) / _1M
-		bsMib := totalMib
-		if bsMib > 32 {
-			bsMib = 32
-		}
-		if bsMib < 1 {
-			bsMib = 1
-		}
-		return bsMib * _1M
-	case total <= 10*_1G:
-		return 256 * _1M
-	case total <= 100*_1G:
-		return 512 * _1M
-	default:
-		return 1024 * _1M
-	}
-}
-
-func createContainer(runSudo, runDirect func(name string, args ...string) error, name, size, keyFile string, keySize int) error {
-	total, err := parseSize(size)
-	if err != nil {
-		return err
-	}
-
-	const minSize = int64(32 * 1024 * 1024)
-	if total < minSize {
-		return fmt.Errorf("minimum container size is 32M, got %s", size)
-	}
-
-	const _1M = int64(1024 * 1024)
-
-	blockSize := calcBlockSize(total)
-	count := (total + blockSize - 1) / blockSize
-
-	if keyFile != "" {
-		fmt.Printf("Creating key file %s...\n", keyFile)
-		if err := runDirect("dd", "if=/dev/urandom", "of="+keyFile, fmt.Sprintf("bs=%d", keySize), "count=1"); err != nil {
-			return fmt.Errorf("creating key file: %w", err)
-		}
-	}
-
-	fmt.Printf("Creating container %s...\n", name)
-	bsStr := fmt.Sprintf("%dM", blockSize/_1M)
-	if err := runDirect("dd", "if=/dev/zero", "of="+name, "bs="+bsStr, fmt.Sprintf("count=%d", count), "status=progress"); err != nil {
-		return fmt.Errorf("creating container: %w", err)
-	}
-
-	absPath, err := filepath.Abs(name)
-	if err != nil {
-		return fmt.Errorf("resolving container path: %w", err)
-	}
-	fmt.Printf("Formatting LUKS container %s...\n", absPath)
-	if err := runDirect("cryptsetup", "luksFormat", "--batch-mode", name); err != nil {
-		return fmt.Errorf("luksFormat failed: %w", err)
-	}
-
-	if keyFile != "" {
-		fmt.Printf("Adding key file %s to LUKS container...\n", keyFile)
-		if err := runDirect("cryptsetup", "luksAddKey", name, keyFile); err != nil {
-			return fmt.Errorf("luksAddKey failed: %w", err)
-		}
-	}
-
-	fmt.Printf("Opening LUKS container %s...\n", name)
-	luksArgs := []string{"luksOpen"}
-	if keyFile != "" {
-		luksArgs = append(luksArgs, "--key-file", keyFile)
-	}
-	luksArgs = append(luksArgs, name, name)
-	if err := runSudo("cryptsetup", luksArgs...); err != nil {
-		return fmt.Errorf("luksOpen failed: %w", err)
-	}
-
-	fmt.Printf("Creating ext4 filesystem on /dev/mapper/%s...\n", name)
-	if err := runSudo("mkfs.ext4", "-m", "0", "/dev/mapper/"+name); err != nil {
-		runSudo("cryptsetup", "luksClose", name)
-		return fmt.Errorf("mkfs.ext4 failed: %w", err)
-	}
-
-	fmt.Printf("Closing LUKS container %s...\n", name)
-	if err := runSudo("cryptsetup", "luksClose", name); err != nil {
-		return fmt.Errorf("luksClose failed: %w", err)
-	}
-
-	fmt.Println("Done.")
-	return nil
-}
-
-func expandContainer(runSudo func(name string, args ...string) error, filename, size, keyFile string) error {
-	total, err := parseSize(size)
-	if err != nil {
-		return err
-	}
-
-	fi, err := os.Stat(filename)
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", filename, err)
-	}
-	oldSize := fi.Size()
-
-	const _1M = int64(1024 * 1024)
-	blockSize := calcBlockSize(total)
-	count := (total + blockSize - 1) / blockSize
-
-	bsStr := fmt.Sprintf("%dM", blockSize/_1M)
-	if err := runSudo("dd", "if=/dev/zero", "of="+filename, "bs="+bsStr, fmt.Sprintf("count=%d", count), "oflag=append", "conv=notrunc", "status=progress"); err != nil {
-		return fmt.Errorf("expanding container: %w", err)
-	}
-
-	name := srcName(filename)
-	luksArgs := []string{"luksOpen"}
-	if keyFile != "" {
-		luksArgs = append(luksArgs, "--key-file", keyFile)
-	}
-	luksArgs = append(luksArgs, filename, name)
-	fmt.Printf("Opening LUKS container %s...\n", filename)
-	if err := runSudo("cryptsetup", luksArgs...); err != nil {
-		return fmt.Errorf("luksOpen failed: %w", err)
-	}
-
-	devMapper := "/dev/mapper/" + name
-
-	fmt.Printf("Checking filesystem %s...\n", devMapper)
-	if err := runSudo("fsck.ext4", "-f", "-y", devMapper); err != nil {
-		runSudo("cryptsetup", "luksClose", name)
-		return fmt.Errorf("fsck.ext4 (pre) failed: %w", err)
-	}
-
-	fmt.Printf("Resizing filesystem %s...\n", devMapper)
-	if err := runSudo("resize2fs", devMapper); err != nil {
-		runSudo("cryptsetup", "luksClose", name)
-		return fmt.Errorf("resize2fs failed: %w", err)
-	}
-
-	fmt.Printf("Checking filesystem %s...\n", devMapper)
-	if err := runSudo("fsck.ext4", "-f", "-y", devMapper); err != nil {
-		runSudo("cryptsetup", "luksClose", name)
-		return fmt.Errorf("fsck.ext4 (post) failed: %w", err)
-	}
-
-	fmt.Printf("Closing LUKS container %s...\n", name)
-	if err := runSudo("cryptsetup", "luksClose", name); err != nil {
-		return fmt.Errorf("luksClose failed: %w", err)
-	}
-
-	newFi, err := os.Stat(filename)
-	if err != nil {
-		return fmt.Errorf("stat %s after expand: %w", filename, err)
-	}
-	fmt.Printf("Old size: %d, New size: %d\n", oldSize, newFi.Size())
-	return nil
-}
-
-func openAndMount(runCmd func(name string, args ...string) error, runOutput func(name string, args ...string) ([]byte, error), source, keyFile, mountPoint string) error {
-	isLuks := func(source string) bool {
-		_, err := runOutput("cryptsetup", "isLuks", source)
-		return err == nil
-	}
-	luksClose := func(name string) error {
-		return runCmd("cryptsetup", "luksClose", name)
-	}
-
-	name := srcName(source)
-	encrypted := isLuks(source)
-
-	if encrypted {
-		fmt.Printf("Opening LUKS device %s...\n", source)
-		args := []string{"luksOpen"}
-		if keyFile != "" {
-			args = append(args, "--key-file", keyFile)
-		}
-		args = append(args, source, name)
-		if err := runCmd("cryptsetup", args...); err != nil {
-			return fmt.Errorf("cryptsetup luksOpen failed: %w", err)
-		}
-		fmt.Printf("LUKS device %s opened.\n", source)
-	}
-
-	if mountPoint == "" {
-		if name == "" {
-			return fmt.Errorf("cannot infer mount point name from empty source")
-		}
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("getting home directory: %w", err)
-		}
-		mountPoint = filepath.Join(home, name)
-	}
-
-	if fi, err := os.Stat(mountPoint); err == nil && !fi.IsDir() {
-		mountPoint += ".mnt"
-	}
-
-	fmt.Printf("Creating mount point %s...\n", mountPoint)
-	if err := os.MkdirAll(mountPoint, 0755); err != nil {
-		if encrypted {
-			luksClose(name)
-		}
-		return fmt.Errorf("creating mountpoint: %w", err)
-	}
-
-	device := source
-	if encrypted {
-		device = "/dev/mapper/" + name
-	}
-	fmt.Printf("Mounting %s to %s...\n", device, mountPoint)
-	if err := runCmd("mount", device, mountPoint); err != nil {
-		if encrypted {
-			luksClose(name)
-		}
-		return fmt.Errorf("mount failed: %w", err)
-	}
-
-	current, err := user.Current()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: cannot determine current user: %v\n", err)
-	} else {
-		fmt.Printf("Setting ownership of %s...\n", mountPoint)
-		if err := runCmd("chown", current.Uid+":"+current.Gid, mountPoint); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not set ownership: %v\n", err)
-		}
-	}
-
-	fmt.Println("Done.")
-	return nil
-}
-
-func umountAndClose(checkMapped func(name string) bool, runCmd func(name string, args ...string) error, runOutput func(name string, args ...string) ([]byte, error), source string) error {
-	luksClose := func(name string) error {
-		return runCmd("cryptsetup", "luksClose", name)
-	}
-
-	name := srcName(source)
-	if name == "" {
-		return fmt.Errorf("cannot determine name from empty source")
-	}
-	encrypted := checkMapped(name)
-
-	search := source
-	if encrypted {
-		search = "/dev/mapper/" + name
-	} else {
-		search = resolveSource(source)
-		if search == source && !strings.Contains(source, "/") {
-			search = "/dev/" + name
-		}
-	}
-
-	out, _ := runOutput("findmnt", "-n", "-l", "-o", "TARGET", "-S", search)
-	mounts := strings.Split(strings.TrimSpace(string(out)), "\n")
-
-	var errs []string
-	for _, m := range mounts {
-		if m == "" {
-			continue
-		}
-		fmt.Printf("Unmounting %s...\n", m)
-		if err := runCmd("umount", m); err != nil {
-			errs = append(errs, fmt.Sprintf("umount %s: %v", m, err))
-			continue
-		}
-		if err := removeIfEmpty(m); err != nil {
-			errs = append(errs, fmt.Sprintf("rmdir %s: %v", m, err))
-		}
-	}
-
-	if encrypted {
-		fmt.Printf("Closing LUKS device %s...\n", name)
-		if err := luksClose(name); err != nil {
-			errs = append(errs, fmt.Sprintf("luksClose: %v", err))
-		}
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("cleanup errors: %s", strings.Join(errs, "; "))
-	}
-	fmt.Println("Done.")
-	return nil
-}
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: lmount [flags] -s <source>\n\n")
@@ -396,7 +14,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "Unmount and close:\n")
 	fmt.Fprintf(os.Stderr, "  lmount -u <source>\n\n")
 	fmt.Fprintf(os.Stderr, "Create a LUKS container:\n")
-	fmt.Fprintf(os.Stderr, "  lmount -c <name> -cs <size> [-ck <keyfile>] [-cks <key-size>]\n\n")
+	fmt.Fprintf(os.Stderr, "  lmount -c <name> -cs <size> [-ck <keyfile>] [-cks <key-size>] [-k <existing-keyfile>]\n\n")
 	fmt.Fprintf(os.Stderr, "Expand a LUKS container:\n")
 	fmt.Fprintf(os.Stderr, "  lmount -x <filename> -xs <size> [-k <keyfile>]\n\n")
 	fmt.Fprintf(os.Stderr, "Flags:\n")
@@ -458,7 +76,7 @@ func main() {
 			os.Exit(1)
 		}
 		*keyFile = firstNonEmpty(*keyFile, *keyFileLong)
-		if err := expandContainer(runCmd, expandVal, expandSizeVal, *keyFile); err != nil {
+		if err := expandContainer(runCmd, runDirect, expandVal, expandSizeVal, *keyFile); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -471,9 +89,11 @@ func main() {
 	sizeVal := firstNonEmpty(*sizeFlag, *sizeFlagLong)
 	keyFileVal := firstNonEmpty(*createKeyFile, *createKeyFileLong)
 	keySizeVal := *createKeySize
-	if *createKeySizeLong != 512 {
-		keySizeVal = *createKeySizeLong
-	}
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "key-size" {
+			keySizeVal = *createKeySizeLong
+		}
+	})
 
 	if createVal != "" {
 		if sizeVal == "" {
@@ -484,14 +104,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: unexpected positional argument(s): %s\n", strings.Join(flag.Args(), " "))
 			os.Exit(1)
 		}
-		runDirect := func(name string, args ...string) error {
-			cmd := exec.Command(name, args...)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			return cmd.Run()
+		if keyFileVal != "" && *keyFile != "" {
+			fmt.Fprintf(os.Stderr, "Error: -ck/--create-key-file and -k/--key cannot be used together\n")
+			os.Exit(1)
 		}
-		if err := createContainer(runCmd, runDirect, createVal, sizeVal, keyFileVal, keySizeVal); err != nil {
+		if err := createContainer(runCmd, runDirect, createVal, sizeVal, *keyFile, keyFileVal, keySizeVal); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
