@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -649,7 +650,7 @@ func TestCreateContainerBlockSize(t *testing.T) {
 		wantBS    string
 		wantCount string
 	}{
-		{"50M", "32M", "2"},
+		{"50M", "32M", "1"},
 		{"256M", "32M", "8"},
 		{"1G", "32M", "32"},
 		{"2G", "256M", "8"},
@@ -685,6 +686,39 @@ func TestCreateContainerBlockSize(t *testing.T) {
 			if foundCount != tt.wantCount {
 				t.Errorf("count=%q, want %q", foundCount, tt.wantCount)
 			}
+
+			// The total bytes written across all dd calls must equal the
+			// requested size exactly (no overshoot from ceil'ing).
+			wantTotal, err := parseSize(tt.size)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got int64
+			for i, c := range calls {
+				if c.name != "dd" {
+					break
+				}
+				var bs, count int64
+				for _, a := range c.args {
+					if v, ok := strings.CutPrefix(a, "bs="); ok {
+						bs, _ = strconv.ParseInt(strings.TrimSuffix(v, "M"), 10, 64)
+						if strings.HasSuffix(v, "M") {
+							bs *= 1024 * 1024
+						}
+					}
+					if cnt, ok := strings.CutPrefix(a, "count="); ok {
+						count, _ = strconv.ParseInt(cnt, 10, 64)
+					}
+				}
+				if i == 0 && bs == 0 {
+					t.Fatalf("call %d: dd missing bs: %v", i, c.args)
+				}
+				got += bs * count
+			}
+			if got != wantTotal {
+				t.Errorf("allocated %d bytes, want %d for %s", got, wantTotal, tt.size)
+			}
+
 		})
 	}
 }
