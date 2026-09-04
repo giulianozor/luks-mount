@@ -8,8 +8,38 @@ This tool is **Linux-only**. It relies on Linux-specific tools and interfaces
 (`cryptsetup`, `mount`, `findmnt`, `mkfs.ext4`, `resize2fs`, `fsck.ext4`, `dd`,
 `truncate`, `sudo`, and the Device Mapper `/dev/mapper`), none of which are
 available or compatible on macOS or Windows.
-- `sudo` access without password prompt for the relevant commands
-- Go 1.21+ (to build from source)
+
+- `sudo` access, ideally passwordless for the commands below.
+- Go 1.21+ (to build from source).
+
+## Recommended sudoers configuration
+
+`lmount` invokes several privileged tools through `sudo`. To run it without
+password prompts, install a `sudoers` drop-in (the exact paths vary by
+distribution — verify with `command -v`):
+
+```sh
+sudo tee /etc/sudoers.d/lmount >/dev/null <<'EOF'
+# Non-interactive use of the tools lmount runs with sudo.
+# Adjust these to your distribution's actual paths and to a more restrictive
+# group if you prefer.
+%sudo ALL=(root) NOPASSWD: /usr/bin/cryptsetup, /usr/bin/mount, /usr/bin/umount, /usr/bin/chown, /usr/bin/findmnt, /usr/sbin/mkfs.ext4, /usr/sbin/fsck.ext4, /usr/sbin/resize2fs
+EOF
+sudo chmod 0440 /etc/sudoers.d/lmount
+```
+
+The privileged commands are `cryptsetup` (for `isLuks`, `luksOpen`, and
+`luksClose`), `mount`, `umount`, `chown`, `findmnt`, `mkfs.ext4`, `fsck.ext4`,
+and `resize2fs`. Container creation (`dd`) and sizing (`truncate`) run as the
+invoking user and do not need `sudo`.
+
+> **Security note:** granting passwordless `sudo` for these binaries allows
+> anyone with access to your account to run them as root. In particular,
+> avoiding the `chown` entry (or restricting it) is recommended on shared
+> systems, since `chown` can be used to change ownership of arbitrary files.
+> The narrowest rule that still works is to grant only the commands you
+> actually use, and to prefer running `lmount` as a dedicated or unprivileged
+> user where possible.
 
 ## Installation
 
