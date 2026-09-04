@@ -24,6 +24,9 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		if _, err := os.Stat(keyFile); err == nil {
 			return fmt.Errorf("key file %q already exists", keyFile)
 		}
+		if keySize <= 0 {
+			return fmt.Errorf("key file size must be positive, got %d", keySize)
+		}
 	}
 
 	blockSize := calcBlockSize(total)

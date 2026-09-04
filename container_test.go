@@ -223,6 +223,17 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("non-positive key file size rejected", func(t *testing.T) {
+		run := func(name string, args ...string) error { return nil }
+		img := filepath.Join(t.TempDir(), "c.img")
+		for _, ks := range []int{0, -1} {
+			err := createContainer(run, run, img, "256M", "", filepath.Join(t.TempDir(), "k"), ks)
+			if err == nil || !strings.Contains(err.Error(), "key file size must be positive") {
+				t.Errorf("expected key size error for %d, got %v", ks, err)
+			}
+		}
+	})
+
 	t.Run("dd container fails", func(t *testing.T) {
 		run := func(name string, args ...string) error {
 			if name == "dd" {

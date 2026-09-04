@@ -88,9 +88,12 @@ func main() {
 	createVal := firstNonEmpty(*createFlag, *createFlagLong)
 	sizeVal := firstNonEmpty(*sizeFlag, *sizeFlagLong)
 	keyFileVal := firstNonEmpty(*createKeyFile, *createKeyFileLong)
-	keySizeVal := *createKeySize
+	keySizeVal := 512
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "key-size" {
+		switch f.Name {
+		case "cks":
+			keySizeVal = *createKeySize
+		case "key-size":
 			keySizeVal = *createKeySizeLong
 		}
 	})
