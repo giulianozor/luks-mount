@@ -553,6 +553,34 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("does not close a LUKS mapping when findmnt fails", func(t *testing.T) {
+		var closes, umounts int
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				closes++
+			}
+			if name == "umount" {
+				umounts++
+			}
+			return nil
+		}
+		runOutputDirect := func(name string, args ...string) ([]byte, error) {
+			return nil, fmt.Errorf("boom")
+		}
+		checkMapped := func(name string) bool { return true }
+
+		err := umountAndClose(checkMapped, runCmd, runOutputDirect, "/dev/__test_dev__")
+		if err == nil || !strings.Contains(fmt.Sprintf("%v", err), "findmnt failed") {
+			t.Errorf("expected a findmnt failure, got %v", err)
+		}
+		if closes != 0 {
+			t.Errorf("must not luksClose when the mount probe failed, got %d close(s)", closes)
+		}
+		if umounts != 0 {
+			t.Errorf("must not umount when the mount probe failed, got %d umount(s)", umounts)
+		}
+	})
+
 	t.Run("unmounts nested targets before parents", func(t *testing.T) {
 		// findmnt returns mounts in arbitrary order; the deepest (child) target
 		// must be unmounted before its parent, or the parent fails as busy.

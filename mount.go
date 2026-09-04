@@ -147,10 +147,14 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	}
 
 	out, findErr := runOutputDirect("findmnt", "-n", "-l", "-o", "TARGET", "-S", search)
-	var errs []string
 	if findErr != nil {
-		errs = append(errs, fmt.Sprintf("findmnt failed: %v", findErr))
+		// The probe failed, so we cannot tell whether the filesystem is still
+		// mounted or where it is. Closing a LUKS mapping under an unmount probe
+		// failure could strand a live mount, so bail out without unmounting or
+		// closing.
+		return fmt.Errorf("findmnt failed: %v", findErr)
 	}
+	var errs []string
 	mounts := strings.Split(strings.TrimSpace(string(out)), "\n")
 	// Unmount deeper (nested) targets before shallower ones: umounting a parent
 	// path while it still holds a child mount fails with "target is busy".
