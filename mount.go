@@ -112,8 +112,19 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 		search = "/dev/mapper/" + name
 	} else {
 		search = resolveSource(source)
-		if search == source && !strings.Contains(source, "/") {
-			search = "/dev/" + name
+		if search == source {
+			if _, err := os.Stat(search); err == nil {
+				// The source resolved to an existing filesystem entry (e.g. a
+				// relative file path). Use its absolute path for findmnt so the
+				// search matches regardless of the caller's working directory.
+				if abs, absErr := filepath.Abs(search); absErr == nil {
+					search = abs
+				}
+			} else if !strings.Contains(source, "/") {
+				// A bare name that is neither an existing path nor resolvable
+				// is treated as a device (e.g. "sda1" -> /dev/sda1).
+				search = "/dev/" + name
+			}
 		}
 	}
 

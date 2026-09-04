@@ -419,6 +419,42 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("absolute path for bare relative file, not /dev/", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "sdc1"), nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		oldWd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chdir(oldWd)
+
+		var searchArg string
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			if name == "findmnt" {
+				searchArg = strings.Join(args, " ")
+			}
+			return nil, nil
+		}
+		checkMapped := func(name string) bool { return false }
+
+		err = umountAndClose(checkMapped, runCmd, runOutput, "sdc1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if strings.Contains(searchArg, "/dev/sdc1") {
+			t.Errorf("bare relative file must not be rewritten to /dev/sdc1, got %q", searchArg)
+		}
+		if !strings.Contains(searchArg, filepath.Join(dir, "sdc1")) {
+			t.Errorf("expected findmnt to search on absolute path %q, got %q", filepath.Join(dir, "sdc1"), searchArg)
+		}
+	})
+
 	t.Run("searches mounts on source", func(t *testing.T) {
 		var searchArg string
 		runCmd := func(name string, args ...string) error { return nil }
