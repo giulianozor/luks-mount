@@ -62,7 +62,7 @@ Creates a LUKS-encrypted file-backed container:
 Minimum container size is 32M.
 
 - `-c` / `--create` — name of the container file to create.
-- `-cs` / `--size` — size with suffix `M` or `G` (e.g. `100M`, `2G`). The block size is chosen by tier to balance speed and waste: ≤1 GiB uses 1–32 MiB blocks, 1–10 GiB uses 256 MiB, 10–100 GiB uses 512 MiB, >100 GiB uses 1024 MiB. The count is calculated to produce the smallest image at least the requested size.
+- `-cs` / `--size` — size with suffix `M` or `G` (e.g. `100M`, `2G`). The block size is chosen by tier to balance speed and waste: ≤1 GiB uses 1–32 MiB blocks, 1–10 GiB uses 256 MiB, 10–100 GiB uses 512 MiB, >100 GiB uses 1024 MiB. The image is allocated to exactly the requested size (a final smaller block is used when the size is not a multiple of the tier's block size).
 - `-ck` / `--create-key-file` — optional path for a key file. When set, a random key file is generated and added to the LUKS slots.
 - `-cks` / `--key-size` — key file size in bytes (default: 512). Ignored if `-ck` is not used.
 
