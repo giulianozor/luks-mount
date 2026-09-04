@@ -106,6 +106,13 @@ func TestRemoveIfEmpty(t *testing.T) {
 			t.Error("current working directory should not have been removed")
 		}
 	})
+
+	t.Run("succeeds when the directory is already gone", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "does-not-exist")
+		if err := removeIfEmpty(missing); err != nil {
+			t.Fatalf("unexpected error for missing mount point: %v", err)
+		}
+	})
 }
 
 func TestParseSize(t *testing.T) {

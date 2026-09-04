@@ -92,6 +92,11 @@ func removeIfEmpty(path string) error {
 	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			// The mount point is already gone (e.g. a stale findmnt snapshot
+			// or a concurrent unmount); nothing to remove.
+			return nil
+		}
 		return err
 	}
 	if len(entries) > 0 {
