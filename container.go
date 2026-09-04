@@ -78,15 +78,15 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	fmt.Printf("Formatting LUKS container %s...\n", name)
-	if err := runDirect("cryptsetup", "luksFormat", "--batch-mode", name); err != nil {
-		return fmt.Errorf("luksFormat failed: %w", err)
-	}
-
+	formatArgs := []string{"luksFormat", "--batch-mode"}
 	if effectiveKeyFile != "" {
-		fmt.Printf("Adding key file %s to LUKS container...\n", effectiveKeyFile)
-		if err := runDirect("cryptsetup", "luksAddKey", name, effectiveKeyFile); err != nil {
-			return fmt.Errorf("luksAddKey failed: %w", err)
-		}
+		// Install the key file as the container's initial key so no interactive
+		// passphrase is needed and the generated/existing key is a valid user key.
+		formatArgs = append(formatArgs, "--key-file", effectiveKeyFile)
+	}
+	formatArgs = append(formatArgs, name)
+	if err := runDirect("cryptsetup", formatArgs...); err != nil {
+		return fmt.Errorf("luksFormat failed: %w", err)
 	}
 
 	containerName := srcName(name)

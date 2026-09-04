@@ -111,8 +111,8 @@ func TestCreateContainer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(calls) != 7 {
-			t.Fatalf("expected 7 calls, got %d: %v", len(calls), calls)
+		if len(calls) != 6 {
+			t.Fatalf("expected 6 calls, got %d: %v", len(calls), calls)
 		}
 
 		if calls[0].name != "dd" || len(calls[0].args) < 1 || calls[0].args[0] != "if=/dev/urandom" {
@@ -121,20 +121,28 @@ func TestCreateContainer(t *testing.T) {
 		if calls[1].name != "dd" || len(calls[1].args) < 1 || calls[1].args[0] != "if=/dev/zero" {
 			t.Errorf("call 1: expected dd zero container, got %v", calls[1])
 		}
-		if calls[2].name != "cryptsetup" || len(calls[2].args) < 2 || calls[2].args[0] != "luksFormat" || calls[2].args[1] != "--batch-mode" {
+		// luksFormat should install the generated key file as the initial key
+		if calls[2].name != "cryptsetup" || calls[2].args[0] != "luksFormat" || calls[2].args[1] != "--batch-mode" {
 			t.Errorf("call 2: expected cryptsetup luksFormat --batch-mode, got %v", calls[2])
 		}
-		if calls[3].name != "cryptsetup" || calls[3].args[0] != "luksAddKey" {
-			t.Errorf("call 3: expected cryptsetup luksAddKey, got %v", calls[3])
+		foundFormatKey := false
+		for i, a := range calls[2].args {
+			if a == "--key-file" && i+1 < len(calls[2].args) && calls[2].args[i+1] == kf {
+				foundFormatKey = true
+				break
+			}
 		}
-		if calls[4].name != "cryptsetup" || calls[4].args[0] != "luksOpen" {
-			t.Errorf("call 4: expected cryptsetup luksOpen, got %v", calls[4])
+		if !foundFormatKey {
+			t.Errorf("luksFormat missing --key-file %q, got %v", kf, calls[2].args)
 		}
-		if calls[5].name != "mkfs.ext4" {
-			t.Errorf("call 5: expected mkfs.ext4, got %s", calls[5].name)
+		if calls[3].name != "cryptsetup" || calls[3].args[0] != "luksOpen" {
+			t.Errorf("call 3: expected cryptsetup luksOpen, got %v", calls[3])
 		}
-		if calls[6].name != "cryptsetup" || calls[6].args[0] != "luksClose" {
-			t.Errorf("call 6: expected cryptsetup luksClose, got %v", calls[6])
+		if calls[4].name != "mkfs.ext4" {
+			t.Errorf("call 4: expected mkfs.ext4, got %s", calls[4].name)
+		}
+		if calls[5].name != "cryptsetup" || calls[5].args[0] != "luksClose" {
+			t.Errorf("call 5: expected cryptsetup luksClose, got %v", calls[5])
 		}
 	})
 
@@ -153,32 +161,48 @@ func TestCreateContainer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		// dd (container), luksFormat, luksAddKey, luksOpen, mkfs.ext4, luksClose = 6
-		if len(calls) != 6 {
-			t.Fatalf("expected 6 calls, got %d: %v", len(calls), calls)
+		// dd (container), luksFormat --key-file, luksOpen --key-file, mkfs.ext4, luksClose = 5
+		if len(calls) != 5 {
+			t.Fatalf("expected 5 calls, got %d: %v", len(calls), calls)
 		}
 
 		// no key file generation call
 		if calls[0].name != "dd" || len(calls[0].args) < 1 || calls[0].args[0] != "if=/dev/zero" {
 			t.Errorf("call 0: expected dd zero container, got %v", calls[0])
 		}
-		// luksAddKey with existing key
-		if calls[2].name != "cryptsetup" || calls[2].args[0] != "luksAddKey" || calls[2].args[len(calls[2].args)-1] != kf {
-			t.Errorf("call 2: expected luksAddKey with %q, got %v", kf, calls[2])
+		// luksFormat should install the existing key file as the initial key
+		if calls[1].name != "cryptsetup" || calls[1].args[0] != "luksFormat" {
+			t.Errorf("call 1: expected cryptsetup luksFormat, got %v", calls[1])
+		}
+		foundFormatKey := false
+		for i, a := range calls[1].args {
+			if a == "--key-file" && i+1 < len(calls[1].args) && calls[1].args[i+1] == kf {
+				foundFormatKey = true
+				break
+			}
+		}
+		if !foundFormatKey {
+			t.Errorf("luksFormat missing --key-file %q, got %v", kf, calls[1].args)
 		}
 		// luksOpen with --key-file existing key
-		if calls[3].name != "cryptsetup" || calls[3].args[0] != "luksOpen" {
-			t.Errorf("call 3: expected cryptsetup luksOpen, got %v", calls[3])
+		if calls[2].name != "cryptsetup" || calls[2].args[0] != "luksOpen" {
+			t.Errorf("call 2: expected cryptsetup luksOpen, got %v", calls[2])
+		}
+		// no luksAddKey call
+		for _, c := range calls {
+			if c.name == "cryptsetup" && len(c.args) > 0 && c.args[0] == "luksAddKey" {
+				t.Errorf("luksAddKey should not be called when luksFormat already uses the key file: %v", c)
+			}
 		}
 		foundKey := false
-		for i, a := range calls[3].args {
-			if a == "--key-file" && i+1 < len(calls[3].args) && calls[3].args[i+1] == kf {
+		for i, a := range calls[2].args {
+			if a == "--key-file" && i+1 < len(calls[2].args) && calls[2].args[i+1] == kf {
 				foundKey = true
 				break
 			}
 		}
 		if !foundKey {
-			t.Errorf("luksOpen missing --key-file %q: %v", kf, calls[3].args)
+			t.Errorf("luksOpen missing --key-file %q: %v", kf, calls[2].args)
 		}
 	})
 
