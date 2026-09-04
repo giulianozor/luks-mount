@@ -121,14 +121,26 @@ func main() {
 	sizeVal := firstNonEmpty(*sizeFlag, *sizeFlagLong)
 	keyFileVal := firstNonEmpty(*createKeyFile, *createKeyFileLong)
 	keySizeVal := 512
+	keySizeSet := false
 	flag.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "cks":
 			keySizeVal = *createKeySize
+			keySizeSet = true
 		case "key-size":
 			keySizeVal = *createKeySizeLong
+			keySizeSet = true
 		}
 	})
+
+	if keySizeSet && createVal == "" {
+		fmt.Fprintf(os.Stderr, "Error: -cks/--key-size is only valid with -c/--create\n")
+		os.Exit(1)
+	}
+	if keySizeSet && keyFileVal == "" {
+		fmt.Fprintf(os.Stderr, "Error: -cks/--key-size is only valid with -ck/--create-key-file\n")
+		os.Exit(1)
+	}
 
 	if createVal != "" {
 		if sizeVal == "" {
