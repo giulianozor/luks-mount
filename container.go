@@ -194,6 +194,12 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("not a LUKS container: %s", filename)
 	}
 
+	if keyFile != "" {
+		if _, err := os.Stat(keyFile); err != nil {
+			return fmt.Errorf("key file %q does not exist", keyFile)
+		}
+	}
+
 	if err := runDirect("truncate", "-s", fmt.Sprintf("+%d", total), filename); err != nil {
 		return fmt.Errorf("expanding container: %w", err)
 	}

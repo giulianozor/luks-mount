@@ -644,13 +644,17 @@ func TestExpandContainer(t *testing.T) {
 	t.Run("success with key file", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")
+		kf := filepath.Join(dir, "key")
+		if err := os.WriteFile(kf, []byte("keymaterial"), 0600); err != nil {
+			t.Fatal(err)
+		}
 
 		var calls []cmdCall
 		run := func(name string, args ...string) error {
 			calls = append(calls, cmdCall{name, args})
 			return nil
 		}
-		err := expandContainer(run, run, f, "256M", "/path/to/key")
+		err := expandContainer(run, run, f, "256M", kf)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -666,13 +670,13 @@ func TestExpandContainer(t *testing.T) {
 		}
 		foundKey := false
 		for i, a := range luksOpenCall.args {
-			if a == "--key-file" && i+1 < len(luksOpenCall.args) && luksOpenCall.args[i+1] == "/path/to/key" {
+			if a == "--key-file" && i+1 < len(luksOpenCall.args) && luksOpenCall.args[i+1] == kf {
 				foundKey = true
 				break
 			}
 		}
 		if !foundKey {
-			t.Errorf("luksOpen missing --key-file /path/to/key: %v", luksOpenCall.args)
+			t.Errorf("luksOpen missing --key-file %q: %v", kf, luksOpenCall.args)
 		}
 	})
 
@@ -681,6 +685,26 @@ func TestExpandContainer(t *testing.T) {
 		err := expandContainer(run, run, "/nonexistent/file", "256M", "")
 		if err == nil || !strings.Contains(err.Error(), "stat") {
 			t.Errorf("expected stat error, got %v", err)
+		}
+	})
+
+	t.Run("missing key file fails fast before growing", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var truncateArgs []string
+		run := func(name string, args ...string) error {
+			if name == "truncate" {
+				truncateArgs = append(truncateArgs, args...)
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", filepath.Join(dir, "nokey"))
+		if err == nil || !strings.Contains(err.Error(), "does not exist") {
+			t.Errorf("expected a 'does not exist' key file error, got %v", err)
+		}
+		if len(truncateArgs) != 0 {
+			t.Errorf("container should not be grown when the key file is missing, truncate: %v", truncateArgs)
 		}
 	})
 
