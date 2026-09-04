@@ -88,6 +88,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if (*mountPoint != "" || *mountPointLong != "") && !mountPresent {
+		fmt.Fprintf(os.Stderr, "Error: -m/--mount is only valid with -s/--source\n")
+		os.Exit(1)
+	}
+
 	if expandSizeVal != "" && expandVal == "" {
 		fmt.Fprintf(os.Stderr, "Error: -xs/--expand-size is only valid with -x/--expand\n")
 		os.Exit(1)
@@ -151,10 +156,6 @@ func main() {
 	}
 	if sizeVal != "" {
 		fmt.Fprintf(os.Stderr, "Error: -cs/--size is only valid with -c/--create\n")
-		os.Exit(1)
-	}
-	if *mountPoint != "" && !mountPresent {
-		fmt.Fprintf(os.Stderr, "Error: -m/--mount is only valid with -s/--source\n")
 		os.Exit(1)
 	}
 
