@@ -144,6 +144,12 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 				// A bare name that is neither an existing path nor resolvable
 				// is treated as a device (e.g. "sda1" -> /dev/sda1).
 				search = "/dev/" + name
+			} else if os.IsNotExist(err) && !strings.HasPrefix(source, "/dev/") {
+				// A path source that does not exist is almost certainly a typo.
+				// Surface it rather than silently reporting success while doing
+				// nothing. (Existing but unmounted sources stay idempotent, and
+				// /dev device nodes may legitimately be absent.)
+				return fmt.Errorf("source %s does not exist", source)
 			}
 		}
 	}

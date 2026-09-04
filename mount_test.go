@@ -493,6 +493,20 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("reports a nonexistent plain file source instead of silently succeeding", func(t *testing.T) {
+		dir := t.TempDir()
+		missing := filepath.Join(dir, "nope.img")
+
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+		checkMapped := func(name string) bool { return false }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, missing)
+		if err == nil || !strings.Contains(err.Error(), "does not exist") {
+			t.Errorf("expected a 'does not exist' error for missing source, got %v", err)
+		}
+	})
+
 	t.Run("absolute path for bare relative file, not /dev/", func(t *testing.T) {
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "sdc1"), nil, 0644); err != nil {
