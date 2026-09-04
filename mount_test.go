@@ -552,4 +552,34 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 			t.Errorf("expected no umount calls when findmnt fails, got %d", umountCalls)
 		}
 	})
+
+	t.Run("unmounts nested targets before parents", func(t *testing.T) {
+		// findmnt returns mounts in arbitrary order; the deepest (child) target
+		// must be unmounted before its parent, or the parent fails as busy.
+		var targets []string
+		runCmd := func(name string, args ...string) error {
+			if name == "umount" && len(args) > 0 {
+				targets = append(targets, args[0])
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			return []byte("/mnt\n/mnt/b\n/mnt/b/c"), nil
+		}
+		checkMapped := func(name string) bool { return false }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, "/dev/__test_dev__")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(targets) != 3 {
+			t.Fatalf("expected 3 umount calls, got %d: %v", len(targets), targets)
+		}
+		want := []string{"/mnt/b/c", "/mnt/b", "/mnt"}
+		for i, m := range targets {
+			if m != want[i] {
+				t.Errorf("umount order: index %d = %q, want %q", i, m, want[i])
+			}
+		}
+	})
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -151,6 +152,11 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 		errs = append(errs, fmt.Sprintf("findmnt failed: %v", findErr))
 	}
 	mounts := strings.Split(strings.TrimSpace(string(out)), "\n")
+	// Unmount deeper (nested) targets before shallower ones: umounting a parent
+	// path while it still holds a child mount fails with "target is busy".
+	// findmnt returns mounts in arbitrary order, so sort longest-path first. This
+	// is safe because a mount point can only ever be a child of another mount.
+	sort.Sort(sort.Reverse(sort.StringSlice(mounts)))
 	for _, m := range mounts {
 		if m == "" {
 			continue
