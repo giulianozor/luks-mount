@@ -38,6 +38,7 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	generatedKey := false
+	mappedOpen := false
 	success := false
 	defer func() {
 		if success {
@@ -47,6 +48,12 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 			if err := os.Remove(keyFile); err != nil && !os.IsNotExist(err) {
 				fmt.Fprintf(os.Stderr, "Warning: removing key file %s after failure: %v\n", keyFile, err)
 			}
+		}
+		if mappedOpen {
+			// A LUKS mapping is still active (luksOpen succeeded but luksClose
+			// failed). Do not delete the backing file underneath it.
+			fmt.Fprintf(os.Stderr, "Warning: LUKS mapping %s is still open; leaving container %s in place\n", srcName(name), name)
+			return
 		}
 		if err := os.Remove(name); err != nil && !os.IsNotExist(err) {
 			fmt.Fprintf(os.Stderr, "Warning: removing container %s after failure: %v\n", name, err)
@@ -89,12 +96,15 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	if err := runSudo("cryptsetup", luksArgs...); err != nil {
 		return fmt.Errorf("luksOpen failed: %w", err)
 	}
+	mappedOpen = true
 
 	devMapper := "/dev/mapper/" + containerName
 	fmt.Printf("Creating ext4 filesystem on %s...\n", devMapper)
 	if err := runSudo("mkfs.ext4", "-m", "0", devMapper); err != nil {
 		if closeErr := runSudo("cryptsetup", "luksClose", containerName); closeErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: luksClose after mkfs failure: %v\n", closeErr)
+		} else {
+			mappedOpen = false
 		}
 		return fmt.Errorf("mkfs.ext4 failed: %w", err)
 	}
@@ -103,6 +113,7 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	if err := runSudo("cryptsetup", "luksClose", containerName); err != nil {
 		return fmt.Errorf("luksClose failed: %w", err)
 	}
+	mappedOpen = false
 
 	fmt.Println("Done.")
 	success = true

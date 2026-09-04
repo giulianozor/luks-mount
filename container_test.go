@@ -351,15 +351,25 @@ func TestCreateContainer(t *testing.T) {
 	})
 
 	t.Run("luksClose fails", func(t *testing.T) {
+		img := filepath.Join(t.TempDir(), "c.img")
 		run := func(name string, args ...string) error {
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
+				// simulate a real container file being created
+				return os.WriteFile(img, []byte("container"), 0644)
+			}
 			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
 				return errors.New("close failed")
 			}
 			return nil
 		}
-		err := createContainer(run, run, filepath.Join(t.TempDir(), "c.img"), "256M", "", "", 512)
+		err := createContainer(run, run, img, "256M", "", "", 512)
 		if err == nil || !strings.Contains(err.Error(), "luksClose failed") {
 			t.Errorf("expected luksClose error, got %v", err)
+		}
+		// luksClose failed, so the /dev/mapper mapping is still considered open;
+		// the backing container file must NOT be deleted underneath it.
+		if _, statErr := os.Stat(img); os.IsNotExist(statErr) {
+			t.Error("container file should be preserved when luksClose fails")
 		}
 	})
 
