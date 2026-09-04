@@ -36,6 +36,20 @@ func runOutput(name string, args ...string) ([]byte, error) {
 	return out, err
 }
 
+// runOutputDirect runs a command without sudo and captures stdout. Use it for
+// read-only probes that need no privileges (e.g. findmnt), so they work even
+// when sudo does not allow them.
+func runOutputDirect(name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		err = fmt.Errorf("%w\n%s", err, strings.TrimRight(stderr.String(), "\n"))
+	}
+	return out, err
+}
+
 func runDirect(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdin = os.Stdin

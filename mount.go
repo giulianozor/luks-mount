@@ -101,7 +101,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	return nil
 }
 
-func umountAndClose(checkMapped func(name string) bool, runCmd func(name string, args ...string) error, runOutput func(name string, args ...string) ([]byte, error), source string) error {
+func umountAndClose(checkMapped func(name string) bool, runCmd func(name string, args ...string) error, runOutputDirect func(name string, args ...string) ([]byte, error), source string) error {
 	luksClose := func(name string) error {
 		return runCmd("cryptsetup", "luksClose", name)
 	}
@@ -133,7 +133,7 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 		}
 	}
 
-	out, findErr := runOutput("findmnt", "-n", "-l", "-o", "TARGET", "-S", search)
+	out, findErr := runOutputDirect("findmnt", "-n", "-l", "-o", "TARGET", "-S", search)
 	if findErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: findmnt failed: %v\n", findErr)
 	}

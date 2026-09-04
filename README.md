@@ -23,15 +23,16 @@ sudo tee /etc/sudoers.d/lmount >/dev/null <<'EOF'
 # Non-interactive use of the tools lmount runs with sudo.
 # Adjust these to your distribution's actual paths and to a more restrictive
 # group if you prefer.
-%sudo ALL=(root) NOPASSWD: /usr/bin/cryptsetup, /usr/bin/mount, /usr/bin/umount, /usr/bin/chown, /usr/bin/findmnt, /usr/sbin/mkfs.ext4, /usr/sbin/fsck.ext4, /usr/sbin/resize2fs
+%sudo ALL=(root) NOPASSWD: /usr/bin/cryptsetup, /usr/bin/mount, /usr/bin/umount, /usr/bin/chown, /usr/sbin/mkfs.ext4, /usr/sbin/fsck.ext4, /usr/sbin/resize2fs
 EOF
 sudo chmod 0440 /etc/sudoers.d/lmount
 ```
 
 The privileged commands are `cryptsetup` (for `isLuks`, `luksOpen`, and
-`luksClose`), `mount`, `umount`, `chown`, `findmnt`, `mkfs.ext4`, `fsck.ext4`,
-and `resize2fs`. Container creation (`dd`) and sizing (`truncate`) run as the
-invoking user and do not need `sudo`.
+`luksClose`), `mount`, `umount`, `chown`, `mkfs.ext4`, `fsck.ext4`, and
+`resize2fs`. The mount-table probe (`findmnt`) runs unprivileged. Container
+creation (`dd`) and sizing (`truncate`) also run as the invoking user and do
+not need `sudo`.
 
 > **Security note:** granting passwordless `sudo` for these binaries allows
 > anyone with access to your account to run them as root. In particular,
