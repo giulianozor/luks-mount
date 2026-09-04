@@ -52,8 +52,13 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		mountPoint = filepath.Join(home, name)
 	}
 
-	if fi, err := os.Stat(mountPoint); err == nil && !fi.IsDir() {
-		mountPoint += ".mnt"
+	for {
+		fi, err := os.Stat(mountPoint)
+		if err == nil && !fi.IsDir() {
+			mountPoint += ".mnt"
+			continue
+		}
+		break
 	}
 
 	_, statErr := os.Stat(mountPoint)

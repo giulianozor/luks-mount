@@ -61,6 +61,29 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("mountpoint collides repeatedly with files", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		dir := t.TempDir()
+		base := filepath.Join(dir, "mnt")
+		// Both the base path and its .mnt fallback exist as files.
+		if err := os.WriteFile(base, []byte("block"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(base+".mnt", []byte("block"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", base)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, err := os.Stat(base + ".mnt.mnt"); os.IsNotExist(err) {
+			t.Error("mountpoint was not created at <path>.mnt.mnt")
+		}
+	})
+
 	t.Run("success with keyfile", func(t *testing.T) {
 		var capturedArgs []string
 		var callCount int
