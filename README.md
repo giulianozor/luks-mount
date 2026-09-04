@@ -111,10 +111,10 @@ lmount -x <filename> -xs <size> [-k <keyfile>]
 
 Expands an existing LUKS-encrypted file-backed container by appending zero-filled space:
 
-1. Grows the backing file by the requested amount (`truncate`), sizing it to exactly the requested amount.
+1. Grows the backing file by the requested amount (`truncate`, zero-filled).
 2. Opens the LUKS device (`--key-file` is respected when `-k` is set).
 3. Checks and resizes the ext4 filesystem to fill the available space, then checks again.
-4. Closes the LUKS device.
+4. Closes the LUKS device. If a step fails while the mapping is open, `lmount` warns so you can close it manually before touching the container.
 5. Prints the old and new file sizes.
 
 The container must already be a LUKS device with an ext4 filesystem.
