@@ -35,10 +35,16 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 
 	if mountPoint == "" {
 		if name == "" {
+			if encrypted {
+				luksClose(name)
+			}
 			return fmt.Errorf("cannot infer mount point name from empty source")
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
+			if encrypted {
+				luksClose(name)
+			}
 			return fmt.Errorf("getting home directory: %w", err)
 		}
 		mountPoint = filepath.Join(home, name)

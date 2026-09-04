@@ -145,6 +145,27 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("empty source closes LUKS when mountpoint inferred", func(t *testing.T) {
+		var calledClose bool
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				calledClose = true
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		err := openAndMount(runCmd, runOutput, "", "", "")
+		if err == nil || !strings.Contains(err.Error(), "cannot infer mount point name") {
+			t.Fatalf("expected mountpoint inference error, got %v", err)
+		}
+		// luksOpen was mocked as successful (runOutput returns nil => isLuks true),
+		// so luksClose must be called on this error path to avoid a leak.
+		if !calledClose {
+			t.Error("luksClose was not called when mountpoint inference failed after LUKS open")
+		}
+	})
+
 	t.Run("chown warning does not fail", func(t *testing.T) {
 		var calledClose bool
 		runCmd := func(name string, args ...string) error {
