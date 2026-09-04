@@ -80,6 +80,10 @@ func firstNonEmpty(ss ...string) string {
 }
 
 func removeIfEmpty(path string) error {
+	if path == string(filepath.Separator) {
+		fmt.Printf("Skipping removal of filesystem root %s.\n", path)
+		return nil
+	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err

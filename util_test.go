@@ -54,6 +54,41 @@ func TestResolveSource(t *testing.T) {
 	})
 }
 
+func TestRemoveIfEmpty(t *testing.T) {
+	t.Run("never removes filesystem root", func(t *testing.T) {
+		err := removeIfEmpty(string(filepath.Separator))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("removes empty directory", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "empty")
+		if err := os.Mkdir(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := removeIfEmpty(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+			t.Error("empty directory should have been removed")
+		}
+	})
+
+	t.Run("keeps non-empty directory", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := removeIfEmpty(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+			t.Error("non-empty directory should not have been removed")
+		}
+	})
+}
+
 func TestParseSize(t *testing.T) {
 	tests := []struct {
 		input string
