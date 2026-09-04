@@ -72,6 +72,11 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		if err := runDirect("dd", "if=/dev/urandom", "of="+keyFile, fmt.Sprintf("bs=%d", keySize), "count=1"); err != nil {
 			return fmt.Errorf("creating key file: %w", err)
 		}
+		// dd creates the file with the default umask (typically world-readable);
+		// this is a decryption key, so restrict it to the owner.
+		if err := os.Chmod(keyFile, 0600); err != nil {
+			return fmt.Errorf("setting key file permissions: %w", err)
+		}
 	}
 
 	fmt.Printf("Creating container %s...\n", name)

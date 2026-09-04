@@ -98,18 +98,27 @@ func TestCreateContainer(t *testing.T) {
 	})
 
 	t.Run("success with generated key file", func(t *testing.T) {
-		var calls []cmdCall
-		run := func(name string, args ...string) error {
-			calls = append(calls, cmdCall{name, args})
-			return nil
-		}
-
 		dir := t.TempDir()
 		img := filepath.Join(dir, "container.img")
 		kf := filepath.Join(dir, "keyfile")
+
+		var calls []cmdCall
+		run := func(name string, args ...string) error {
+			calls = append(calls, cmdCall{name, args})
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
+				// simulate the generated key file being written to disk
+				return os.WriteFile(kf, []byte("keydata"), 0644)
+			}
+			return nil
+		}
+
 		err := createContainer(run, run, img, "256M", "", kf, 512)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		// the generated key file must be private, not world-readable
+		if fi, statErr := os.Stat(kf); statErr == nil && fi.Mode()&0777 != 0600 {
+			t.Errorf("expected generated key file mode 0600, got %o", fi.Mode()&0777)
 		}
 		if len(calls) != 6 {
 			t.Fatalf("expected 6 calls, got %d: %v", len(calls), calls)
@@ -314,7 +323,7 @@ func TestCreateContainer(t *testing.T) {
 
 		run := func(name string, args ...string) error {
 			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
-				return nil
+				return os.WriteFile(kf, []byte("keydata"), 0644)
 			}
 			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
 				return errors.New("dd container failed")
@@ -453,6 +462,12 @@ func TestCreateContainer(t *testing.T) {
 		kf := filepath.Join(dir, "keyfile")
 
 		run := func(name string, args ...string) error {
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
+				return os.WriteFile(kf, []byte("keydata"), 0644)
+			}
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
+				return os.WriteFile(img, []byte("container"), 0644)
+			}
 			if name == "mkfs.ext4" {
 				return errors.New("mkfs failed")
 			}
