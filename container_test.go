@@ -447,24 +447,17 @@ func TestExpandContainer(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// dd, luksOpen, fsck (pre), resize2fs, fsck (post), luksClose = 6
+		// truncate, luksOpen, fsck (pre), resize2fs, fsck (post), luksClose = 6
 		if len(calls) != 6 {
 			t.Fatalf("expected 6 calls, got %d: %v", len(calls), calls)
 		}
 
-		// dd with append
-		if calls[0].name != "dd" {
-			t.Errorf("call 0: expected dd, got %s", calls[0].name)
+		// grow by truncate (portable; dd oflag=append is GNU-only)
+		if calls[0].name != "truncate" {
+			t.Errorf("call 0: expected truncate, got %s", calls[0].name)
 		}
-		hasAppend := false
-		for _, a := range calls[0].args {
-			if a == "oflag=append" {
-				hasAppend = true
-				break
-			}
-		}
-		if !hasAppend {
-			t.Errorf("dd args missing oflag=append: %v", calls[0].args)
+		if len(calls[0].args) >= 2 && calls[0].args[0] == "-s" && calls[0].args[1] != "+268435456" {
+			t.Errorf("expected truncate -s +268435456, got %v", calls[0].args)
 		}
 
 		// luksOpen
@@ -547,13 +540,13 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
-	t.Run("dd fails", func(t *testing.T) {
+	t.Run("truncate fails", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")
 
 		run := func(name string, args ...string) error {
-			if name == "dd" {
-				return errors.New("dd failed")
+			if name == "truncate" {
+				return errors.New("truncate failed")
 			}
 			return nil
 		}
@@ -687,33 +680,44 @@ func TestCreateContainerBlockSize(t *testing.T) {
 				t.Errorf("count=%q, want %q", foundCount, tt.wantCount)
 			}
 
-			// The total bytes written across all dd calls must equal the
-			// requested size exactly (no overshoot from ceil'ing).
+			// The total bytes allocated across the dd bulk write and the
+			// truncate remainder must equal the requested size exactly
+			// (no overshoot from ceil'ing).
 			wantTotal, err := parseSize(tt.size)
 			if err != nil {
 				t.Fatal(err)
 			}
 			var got int64
-			for i, c := range calls {
-				if c.name != "dd" {
-					break
-				}
-				var bs, count int64
-				for _, a := range c.args {
-					if v, ok := strings.CutPrefix(a, "bs="); ok {
-						bs, _ = strconv.ParseInt(strings.TrimSuffix(v, "M"), 10, 64)
-						if strings.HasSuffix(v, "M") {
-							bs *= 1024 * 1024
+			for _, c := range calls {
+				switch c.name {
+				case "dd":
+					var bs, count int64
+					for _, a := range c.args {
+						if v, ok := strings.CutPrefix(a, "bs="); ok {
+							bs, _ = strconv.ParseInt(strings.TrimSuffix(v, "M"), 10, 64)
+							if strings.HasSuffix(v, "M") {
+								bs *= 1024 * 1024
+							}
+						}
+						if cnt, ok := strings.CutPrefix(a, "count="); ok {
+							count, _ = strconv.ParseInt(cnt, 10, 64)
 						}
 					}
-					if cnt, ok := strings.CutPrefix(a, "count="); ok {
-						count, _ = strconv.ParseInt(cnt, 10, 64)
+					if bs == 0 {
+						t.Fatalf("dd missing bs: %v", c.args)
+					}
+					got += bs * count
+				case "truncate":
+					for _, a := range c.args {
+						if sz, ok := strings.CutPrefix(a, "+"); ok {
+							n, _ := strconv.ParseInt(sz, 10, 64)
+							got += n
+						}
 					}
 				}
-				if i == 0 && bs == 0 {
-					t.Fatalf("call %d: dd missing bs: %v", i, c.args)
+				if c.name != "dd" && c.name != "truncate" {
+					break
 				}
-				got += bs * count
 			}
 			if got != wantTotal {
 				t.Errorf("allocated %d bytes, want %d for %s", got, wantTotal, tt.size)

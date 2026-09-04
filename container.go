@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 )
 
 func createContainer(runSudo, runDirect func(name string, args ...string) error, name, size, existingKeyFile, keyFile string, keySize int) error {
@@ -68,7 +67,7 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	fmt.Printf("Creating container %s...\n", name)
-	if err := writeZeros(runDirect, name, "", total); err != nil {
+	if err := writeZeros(runDirect, name, total); err != nil {
 		return fmt.Errorf("creating container: %w", err)
 	}
 
@@ -133,27 +132,23 @@ func isLuksContainer(path string) bool {
 	return string(buf) == luksMagic
 }
 
-// writeZeros writes exactly `total` zero bytes to output file `of`. It uses a
-// large block size for the bulk of the data and appends a single remainder
-// block when the requested size is not a whole multiple of the block size, so
-// the resulting file is never larger than requested. `fullOpts` are extra dd
-// options applied to every block written (e.g. "oflag=append conv=notrunc").
-func writeZeros(run func(name string, args ...string) error, of, fullOpts string, total int64) error {
+// writeZeros writes exactly `total` zero bytes to a new output file `of`. It
+// uses a large block size for the bulk of the data and extends the file by the
+// remainder with `truncate` when the requested size is not a whole multiple of
+// the block size, so the resulting file is never larger than requested. Only
+// portable programs are used (dd's `oflag=append` is a GNU-only extension that
+// BSD/macOS dd does not support).
+func writeZeros(run func(name string, args ...string) error, of string, total int64) error {
 	blockSize := calcBlockSize(total)
 	count := total / blockSize
 
-	args := []string{"if=/dev/zero", "of=" + of, fmt.Sprintf("bs=%dM", blockSize/_1M), fmt.Sprintf("count=%d", count)}
-	if fullOpts != "" {
-		args = append(args, strings.Fields(fullOpts)...)
-	}
-	args = append(args, "status=progress")
+	args := []string{"if=/dev/zero", "of=" + of, fmt.Sprintf("bs=%dM", blockSize/_1M), fmt.Sprintf("count=%d", count), "status=progress"}
 	if err := run("dd", args...); err != nil {
 		return err
 	}
 
 	if rem := total % blockSize; rem > 0 {
-		remArgs := []string{"if=/dev/zero", "of=" + of, fmt.Sprintf("bs=%d", rem), "count=1", "status=progress", "oflag=append", "conv=notrunc"}
-		if err := run("dd", remArgs...); err != nil {
+		if err := run("truncate", "-s", fmt.Sprintf("+%d", rem), of); err != nil {
 			return err
 		}
 	}
@@ -176,7 +171,7 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("not a LUKS container: %s", filename)
 	}
 
-	if err := writeZeros(runDirect, filename, "oflag=append conv=notrunc", total); err != nil {
+	if err := runDirect("truncate", "-s", fmt.Sprintf("+%d", total), filename); err != nil {
 		return fmt.Errorf("expanding container: %w", err)
 	}
 
