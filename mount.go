@@ -54,9 +54,21 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 
 	for {
 		fi, err := os.Stat(mountPoint)
-		if err == nil && !fi.IsDir() {
+		if err == nil {
+			if fi.IsDir() {
+				break
+			}
 			mountPoint += ".mnt"
 			continue
+		}
+		if !os.IsNotExist(err) {
+			// A permission or other error probing the mount point. Surface it
+			// clearly rather than masking it behind a mkdir failure, and close
+			// a LUKS mapping that was already opened.
+			if encrypted {
+				luksClose(name)
+			}
+			return fmt.Errorf("checking mount point %s: %w", mountPoint, err)
 		}
 		break
 	}

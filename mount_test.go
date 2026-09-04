@@ -85,6 +85,34 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("mount point stat error surfaces clearly and closes mapping", func(t *testing.T) {
+		var closed bool
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				closed = true
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		dir := t.TempDir()
+		restricted := filepath.Join(dir, "restricted")
+		os.MkdirAll(restricted, 0000)
+		t.Cleanup(func() { os.Chmod(restricted, 0755) })
+		mp := filepath.Join(restricted, "mnt")
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", mp)
+		if err == nil || !strings.Contains(err.Error(), "checking mount point") {
+			t.Fatalf("expected clear mount point stat error, got %v", err)
+		}
+		if strings.Contains(err.Error(), "creating mountpoint") {
+			t.Error("permission error should not be masked as a mkdir error")
+		}
+		if !closed {
+			t.Error("LUKS mapping should be closed after a mount point probe error")
+		}
+	})
+
 	t.Run("success with keyfile", func(t *testing.T) {
 		var capturedArgs []string
 		var callCount int
