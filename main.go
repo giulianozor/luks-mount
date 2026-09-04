@@ -66,6 +66,11 @@ func main() {
 	expandVal := firstNonEmpty(*expandFlag, *expandFlagLong)
 	expandSizeVal := firstNonEmpty(*expandSizeFlag, *expandSizeFlagLong)
 
+	if expandSizeVal != "" && expandVal == "" {
+		fmt.Fprintf(os.Stderr, "Error: -xs/--expand-size is only valid with -x/--expand\n")
+		os.Exit(1)
+	}
+
 	if expandVal != "" {
 		if expandSizeVal == "" {
 			fmt.Fprintf(os.Stderr, "Error: -xs/--expand-size is required with -x/--expand\n")
@@ -120,6 +125,10 @@ func main() {
 
 	if keyFileVal != "" {
 		fmt.Fprintf(os.Stderr, "Error: -ck/--create-key-file is only valid with -c/--create\n")
+		os.Exit(1)
+	}
+	if sizeVal != "" {
+		fmt.Fprintf(os.Stderr, "Error: -cs/--size is only valid with -c/--create\n")
 		os.Exit(1)
 	}
 
