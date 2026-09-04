@@ -176,6 +176,28 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("mount error surfaces a luksClose failure", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				return errors.New("mount fail")
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				return errors.New("close fail")
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		mp := filepath.Join(t.TempDir(), "mnt")
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", mp)
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		if !strings.Contains(err.Error(), "mount failed") || !strings.Contains(err.Error(), "mapping left open") {
+			t.Errorf("expected a mount failure hinting at the open mapping, got %v", err)
+		}
+	})
+
 	t.Run("mount error keeps pre-existing mountpoint", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error {
 			if name == "mount" {

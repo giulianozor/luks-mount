@@ -92,7 +92,9 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	fmt.Printf("Mounting %s to %s...\n", device, mountPoint)
 	if err := runCmd("mount", device, mountPoint); err != nil {
 		if encrypted {
-			luksClose(name)
+			if closeErr := luksClose(name); closeErr != nil {
+				return fmt.Errorf("mount failed: %w (mapping left open: %v)", err, closeErr)
+			}
 		}
 		if createdMountpoint {
 			_ = os.Remove(mountPoint)
