@@ -118,6 +118,11 @@ func main() {
 		return
 	}
 
+	if keyFileVal != "" {
+		fmt.Fprintf(os.Stderr, "Error: -ck/--create-key-file is only valid with -c/--create\n")
+		os.Exit(1)
+	}
+
 	source := strings.TrimRight(firstNonEmpty(*sourceFlag, *sourceFlagLong), "/")
 	umountVal := strings.TrimRight(firstNonEmpty(*umount, *umountLong), "/")
 	if umountVal != "" {
