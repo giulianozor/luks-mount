@@ -805,6 +805,33 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("fsck post failure reports a left-open mapping when close fails", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var fsckCalls int
+		run := func(name string, args ...string) error {
+			if name == "fsck.ext4" && len(args) > 1 && args[0] == "-f" && args[1] == "-y" {
+				fsckCalls++
+				// Fail only the second (post-resize) check.
+				if fsckCalls == 2 {
+					return errors.New("fsck post fail")
+				}
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				return errors.New("close fail")
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "fsck.ext4 (post)") {
+			t.Errorf("expected fsck post error, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "mapping left open") {
+			t.Errorf("expected a left-open-mapping hint when luksClose fails, got %v", err)
+		}
+	})
+
 	t.Run("resize2fs fails does not roll back", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")
@@ -817,6 +844,7 @@ func TestExpandContainer(t *testing.T) {
 			}
 			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
 				closeCalled = true
+				return errors.New("close fail")
 			}
 			if name == "truncate" && len(args) >= 2 && args[0] == "-s" && !strings.HasPrefix(args[1], "+") {
 				shrinkArgs = args
@@ -829,6 +857,9 @@ func TestExpandContainer(t *testing.T) {
 		}
 		if !closeCalled {
 			t.Error("expected luksClose after resize2fs failure")
+		}
+		if !strings.Contains(err.Error(), "mapping left open") {
+			t.Errorf("expected a left-open-mapping hint when luksClose fails, got %v", err)
 		}
 		if len(shrinkArgs) != 0 {
 			t.Errorf("expected no rollback shrink after resize2fs failure, got %v", shrinkArgs)
