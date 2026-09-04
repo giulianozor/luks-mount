@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,8 +110,14 @@ func parseSize(s string) (int64, error) {
 
 	switch suffix {
 	case "M":
+		if num > math.MaxInt64/(1024*1024) {
+			return 0, fmt.Errorf("invalid size %q: too large", s)
+		}
 		return num * 1024 * 1024, nil
 	case "G":
+		if num > math.MaxInt64/(1024*1024*1024) {
+			return 0, fmt.Errorf("invalid size %q: too large", s)
+		}
 		return num * 1024 * 1024 * 1024, nil
 	default:
 		return 0, fmt.Errorf("invalid size %q: suffix must be M or G", s)

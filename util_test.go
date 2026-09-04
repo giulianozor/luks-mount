@@ -71,6 +71,7 @@ func TestParseSize(t *testing.T) {
 		{"-1M", 0, true},
 		{"abcM", 0, true},
 		{"0M", 0, true},
+		{"999999999999999999G", 0, true},
 	}
 	for _, tt := range tests {
 		got, err := parseSize(tt.input)
