@@ -478,6 +478,9 @@ func TestCreateContainer(t *testing.T) {
 		if _, statErr := os.Stat(kf); os.IsNotExist(statErr) {
 			t.Error("generated key file should be preserved when luksClose fails")
 		}
+		if !strings.Contains(err.Error(), "created and left mapped open") {
+			t.Errorf("expected the error to say the container was left mapped, got %v", err)
+		}
 	})
 
 	t.Run("cleans up container and key file on failure", func(t *testing.T) {

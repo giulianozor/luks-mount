@@ -133,7 +133,7 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 
 	fmt.Printf("Closing LUKS container %s...\n", containerName)
 	if err := runSudo("cryptsetup", "luksClose", containerName); err != nil {
-		return fmt.Errorf("luksClose failed: %w", err)
+		return fmt.Errorf("luksClose failed: %w (container %s was created and left mapped open)", err, name)
 	}
 	mappedOpen = false
 
