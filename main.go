@@ -153,6 +153,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: -cs/--size is only valid with -c/--create\n")
 		os.Exit(1)
 	}
+	if *mountPoint != "" && !mountPresent {
+		fmt.Fprintf(os.Stderr, "Error: -m/--mount is only valid with -s/--source\n")
+		os.Exit(1)
+	}
 
 	source := strings.TrimRight(firstNonEmpty(*sourceFlag, *sourceFlagLong), "/")
 	umountVal := strings.TrimRight(firstNonEmpty(*umount, *umountLong), "/")
