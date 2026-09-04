@@ -390,8 +390,8 @@ func TestUmountAndClose_luks(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "umount") {
 			t.Errorf("expected umount error, got %v", err)
 		}
-		if !calledClose {
-			t.Error("luksClose was not called despite umount error")
+		if calledClose {
+			t.Error("luksClose must NOT be called while a filesystem is still mounted")
 		}
 	})
 

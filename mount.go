@@ -163,6 +163,7 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	// findmnt returns mounts in arbitrary order, so sort longest-path first. This
 	// is safe because a mount point can only ever be a child of another mount.
 	sort.Sort(sort.Reverse(sort.StringSlice(mounts)))
+	unmountFailed := false
 	for _, m := range mounts {
 		if m == "" {
 			continue
@@ -170,6 +171,7 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 		fmt.Printf("Unmounting %s...\n", m)
 		if err := runCmd("umount", m); err != nil {
 			errs = append(errs, fmt.Sprintf("umount %s: %v", m, err))
+			unmountFailed = true
 			continue
 		}
 		if err := removeIfEmpty(m); err != nil {
@@ -177,7 +179,10 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 		}
 	}
 
-	if encrypted {
+	// Only detach the LUKS mapping once every target was unmounted. Closing the
+	// mapping while a filesystem is still mounted would strand a dangling mount
+	// over a now-removed mapper device.
+	if encrypted && !unmountFailed {
 		fmt.Printf("Closing LUKS device %s...\n", name)
 		if err := luksClose(name); err != nil {
 			errs = append(errs, fmt.Sprintf("luksClose: %v", err))
