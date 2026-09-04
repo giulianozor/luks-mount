@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -486,6 +487,26 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("success does not roll back after resize", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var shrinkCalls int
+		run := func(name string, args ...string) error {
+			if name == "truncate" && len(args) >= 2 && args[0] == "-s" && !strings.HasPrefix(args[1], "+") {
+				shrinkCalls++
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if shrinkCalls != 0 {
+			t.Errorf("expected no rollback shrink on success, got %d", shrinkCalls)
+		}
+	})
+
 	t.Run("success with key file", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")
@@ -559,14 +580,22 @@ func TestExpandContainer(t *testing.T) {
 	t.Run("luksOpen fails cleans up", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")
+		before, statErr := os.Stat(f)
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
 
 		var closeCalled bool
+		var shrinkArgs []string
 		run := func(name string, args ...string) error {
 			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
 				return errors.New("open fail")
 			}
 			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
 				closeCalled = true
+			}
+			if name == "truncate" && len(args) >= 2 && args[0] == "-s" && !strings.HasPrefix(args[1], "+") {
+				shrinkArgs = args
 			}
 			return nil
 		}
@@ -577,19 +606,30 @@ func TestExpandContainer(t *testing.T) {
 		if closeCalled {
 			t.Error("luksClose should not be called when luksOpen itself failed")
 		}
+		if len(shrinkArgs) != 3 || shrinkArgs[1] != fmt.Sprintf("%d", before.Size()) {
+			t.Errorf("expected rollback truncate -s %d, got %v", before.Size(), shrinkArgs)
+		}
 	})
 
 	t.Run("fsck pre fails cleans up luksClose", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")
+		before, statErr := os.Stat(f)
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
 
 		var closeCalled bool
+		var shrinkArgs []string
 		run := func(name string, args ...string) error {
 			if name == "fsck.ext4" && len(args) > 1 && args[0] == "-f" && args[1] == "-y" {
 				return errors.New("fsck fail")
 			}
 			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
 				closeCalled = true
+			}
+			if name == "truncate" && len(args) >= 2 && args[0] == "-s" && !strings.HasPrefix(args[1], "+") {
+				shrinkArgs = args
 			}
 			return nil
 		}
@@ -599,6 +639,39 @@ func TestExpandContainer(t *testing.T) {
 		}
 		if !closeCalled {
 			t.Error("expected luksClose after fsck pre failure")
+		}
+		if len(shrinkArgs) != 3 || shrinkArgs[1] != fmt.Sprintf("%d", before.Size()) {
+			t.Errorf("expected rollback truncate -s %d, got %v", before.Size(), shrinkArgs)
+		}
+	})
+
+	t.Run("resize2fs fails does not roll back", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var closeCalled bool
+		var shrinkArgs []string
+		run := func(name string, args ...string) error {
+			if name == "resize2fs" {
+				return errors.New("resize fail")
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				closeCalled = true
+			}
+			if name == "truncate" && len(args) >= 2 && args[0] == "-s" && !strings.HasPrefix(args[1], "+") {
+				shrinkArgs = args
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "resize2fs failed") {
+			t.Errorf("expected resize2fs error, got %v", err)
+		}
+		if !closeCalled {
+			t.Error("expected luksClose after resize2fs failure")
+		}
+		if len(shrinkArgs) != 0 {
+			t.Errorf("expected no rollback shrink after resize2fs failure, got %v", shrinkArgs)
 		}
 	})
 

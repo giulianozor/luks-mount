@@ -175,6 +175,21 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("expanding container: %w", err)
 	}
 
+	// If a subsequent step fails before the filesystem is resized, shrink the
+	// backing file back to its original size. Without this a failed expand
+	// leaves the file permanently grown, and rerunning the same command would
+	// grow it again (non-idempotent). Once resize2fs runs the filesystem may
+	// be partially grown, so it must NOT be rolled back after that point.
+	resized := false
+	rollback := func() {
+		if resized {
+			return
+		}
+		if rollbackErr := runDirect("truncate", "-s", fmt.Sprintf("%d", oldSize), filename); rollbackErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: restoring container size after failure: %v\n", rollbackErr)
+		}
+	}
+
 	name := srcName(filename)
 	luksArgs := []string{"luksOpen"}
 	if keyFile != "" {
@@ -183,6 +198,7 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	luksArgs = append(luksArgs, filename, name)
 	fmt.Printf("Opening LUKS container %s...\n", filename)
 	if err := runSudo("cryptsetup", luksArgs...); err != nil {
+		rollback()
 		return fmt.Errorf("luksOpen failed: %w", err)
 	}
 
@@ -190,6 +206,7 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 
 	fmt.Printf("Checking filesystem %s...\n", devMapper)
 	if err := runSudo("fsck.ext4", "-f", "-y", devMapper); err != nil {
+		rollback()
 		if closeErr := runSudo("cryptsetup", "luksClose", name); closeErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: luksClose after fsck (pre) failure: %v\n", closeErr)
 		}
@@ -197,6 +214,7 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	fmt.Printf("Resizing filesystem %s...\n", devMapper)
+	resized = true
 	if err := runSudo("resize2fs", devMapper); err != nil {
 		if closeErr := runSudo("cryptsetup", "luksClose", name); closeErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: luksClose after resize2fs failure: %v\n", closeErr)
