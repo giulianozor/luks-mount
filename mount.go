@@ -23,6 +23,15 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	name := srcName(source)
 	encrypted := isLuks(source)
 
+	if !strings.HasPrefix(source, "/dev/") && source != "" {
+		if _, err := os.Stat(source); os.IsNotExist(err) {
+			// A non-device source that does not exist is almost certainly a typo.
+			// Reject it up front rather than letting cryptsetup/mount fail with a
+			// cryptic error, and never leave a LUKS mapping open for nothing.
+			return fmt.Errorf("source %s does not exist", source)
+		}
+	}
+
 	if encrypted {
 		fmt.Printf("Opening LUKS device %s...\n", source)
 		args := []string{"luksOpen"}
