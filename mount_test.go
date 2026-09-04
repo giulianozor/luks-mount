@@ -28,6 +28,29 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a relative inferred mountpoint (empty HOME)", func(t *testing.T) {
+		var calledClose bool
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				calledClose = true
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		orig := userHomeDir
+		userHomeDir = func() (string, error) { return "", nil }
+		t.Cleanup(func() { userHomeDir = orig })
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", "")
+		if err == nil || !strings.Contains(err.Error(), "absolute mount point") {
+			t.Errorf("expected an absolute-mountpoint inference error, got %v", err)
+		}
+		if !calledClose {
+			t.Error("LUKS mapping should be closed on a mountpoint inference error")
+		}
+	})
+
 	t.Run("success with mountpoint", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error { return nil }
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }

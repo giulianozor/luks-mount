@@ -60,6 +60,17 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 			return fmt.Errorf("getting home directory: %w", err)
 		}
 		mountPoint = filepath.Join(home, name)
+		// HOME could be empty or relative (e.g. an unset/shortened HOME in a
+		// service), which would make this an effectively relative mount point
+		// created in an unexpected place. Refuse rather than mount to a path
+		// that depends on the caller's working directory.
+		absMp, absErr := filepath.Abs(mountPoint)
+		if absErr == nil && absMp != mountPoint {
+			if encrypted {
+				luksClose(name)
+			}
+			return fmt.Errorf("cannot infer an absolute mount point: HOME is %q", home)
+		}
 	}
 
 	for {
