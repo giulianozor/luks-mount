@@ -4,8 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 )
+
+// goos is the runtime operating system name; overridable for testing.
+var goos = runtime.GOOS
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: lmount [flags] -s <source>\n\n")
@@ -32,6 +36,11 @@ func usage() {
 }
 
 func main() {
+	if goos != "linux" {
+		fmt.Fprintf(os.Stderr, "Error: lmount is Linux-only (requires cryptsetup, mount, findmnt, and /dev/mapper); unsupported OS: %s\n", goos)
+		os.Exit(1)
+	}
+
 	keyFile := flag.String("k", "", "Path to key file")
 	keyFileLong := flag.String("key", "", "Path to key file")
 	mountPoint := flag.String("m", "", "Mount point (default: ~/<source basename>)")

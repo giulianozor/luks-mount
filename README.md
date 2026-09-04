@@ -4,7 +4,10 @@ Mount, unmount, and create LUKS-encrypted devices and file-backed containers. Au
 
 ## Requirements
 
-- Linux with `cryptsetup`, `mount`, `dd`, and `mkfs.ext4` installed
+This tool is **Linux-only**. It relies on Linux-specific tools and interfaces
+(`cryptsetup`, `mount`, `findmnt`, `mkfs.ext4`, `resize2fs`, `fsck.ext4`, `dd`,
+`truncate`, `sudo`, and the Device Mapper `/dev/mapper`), none of which are
+available or compatible on macOS or Windows.
 - `sudo` access without password prompt for the relevant commands
 - Go 1.21+ (to build from source)
 
@@ -76,7 +79,7 @@ lmount -x <filename> -xs <size> [-k <keyfile>]
 
 Expands an existing LUKS-encrypted file-backed container by appending zero-filled space:
 
-1. Grows the backing file by the requested amount (`truncate`, which is portable across GNU/Linux and BSD/macOS — unlike `dd`'s GNU-only `oflag=append`), sizing it to exactly the requested amount.
+1. Grows the backing file by the requested amount (`truncate`), sizing it to exactly the requested amount.
 2. Opens the LUKS device (`--key-file` is respected when `-k` is set).
 3. Checks and resizes the ext4 filesystem to fill the available space, then checks again.
 4. Closes the LUKS device.

@@ -141,9 +141,7 @@ func isLuksContainer(path string) bool {
 // writeZeros writes exactly `total` zero bytes to a new output file `of`. It
 // uses a large block size for the bulk of the data and extends the file by the
 // remainder with `truncate` when the requested size is not a whole multiple of
-// the block size, so the resulting file is never larger than requested. Only
-// portable programs are used (dd's `oflag=append` is a GNU-only extension that
-// BSD/macOS dd does not support).
+// the block size, so the resulting file is never larger than requested.
 func writeZeros(run func(name string, args ...string) error, of string, total int64) error {
 	blockSize := calcBlockSize(total)
 	count := total / blockSize
