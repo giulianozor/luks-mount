@@ -226,7 +226,7 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	resized = true
 	if err := runSudo("resize2fs", devMapper); err != nil {
 		if closeErr := runSudo("cryptsetup", "luksClose", name); closeErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: luksClose after resize2fs failure: %v\n", closeErr)
+			fmt.Fprintf(os.Stderr, "Warning: luksClose after resize2fs failure: %v (mapping left open)\n", closeErr)
 		}
 		return fmt.Errorf("resize2fs failed: %w", err)
 	}
@@ -234,7 +234,7 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	fmt.Printf("Checking filesystem %s...\n", devMapper)
 	if err := runSudo("fsck.ext4", "-f", "-y", devMapper); err != nil {
 		if closeErr := runSudo("cryptsetup", "luksClose", name); closeErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: luksClose after fsck (post) failure: %v\n", closeErr)
+			fmt.Fprintf(os.Stderr, "Warning: luksClose after fsck (post) failure: %v (mapping left open)\n", closeErr)
 		}
 		return fmt.Errorf("fsck.ext4 (post) failed: %w", err)
 	}
