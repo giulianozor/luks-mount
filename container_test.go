@@ -601,6 +601,26 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("final luksClose failure reports a left-open mapping", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				return errors.New("close failed")
+			}
+			return nil
+		}
+
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "luksClose failed") {
+			t.Errorf("expected final luksClose error, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "mapping left open") {
+			t.Errorf("expected the error to say the mapping was left open, got %v", err)
+		}
+	})
+
 	t.Run("success does not roll back after resize", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")

@@ -264,7 +264,7 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 
 	fmt.Printf("Closing LUKS container %s...\n", name)
 	if err := runSudo("cryptsetup", "luksClose", name); err != nil {
-		return fmt.Errorf("luksClose failed: %w", err)
+		return fmt.Errorf("luksClose failed: %w (mapping left open)", err)
 	}
 
 	newFi, err := os.Stat(filename)
