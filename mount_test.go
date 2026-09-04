@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -496,6 +497,31 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		}
 		if strings.Contains(searchArg, "/dev/mapper/") {
 			t.Errorf("unexpected mapper path in findmnt search: %q", searchArg)
+		}
+	})
+
+	t.Run("reports findmnt failure as an error, not success", func(t *testing.T) {
+		var umountCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "umount" {
+				umountCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			return nil, fmt.Errorf("boom")
+		}
+		checkMapped := func(name string) bool { return false }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, "/dev/__test_dev__")
+		if err == nil {
+			t.Fatalf("expected an error when findmnt fails")
+		}
+		if !strings.Contains(fmt.Sprintf("%v", err), "findmnt failed") {
+			t.Errorf("expected findmnt failure to be reported, got %v", err)
+		}
+		if umountCalls != 0 {
+			t.Errorf("expected no umount calls when findmnt fails, got %d", umountCalls)
 		}
 	})
 }

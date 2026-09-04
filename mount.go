@@ -134,12 +134,11 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	}
 
 	out, findErr := runOutputDirect("findmnt", "-n", "-l", "-o", "TARGET", "-S", search)
+	var errs []string
 	if findErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: findmnt failed: %v\n", findErr)
+		errs = append(errs, fmt.Sprintf("findmnt failed: %v", findErr))
 	}
 	mounts := strings.Split(strings.TrimSpace(string(out)), "\n")
-
-	var errs []string
 	for _, m := range mounts {
 		if m == "" {
 			continue
