@@ -23,12 +23,9 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	name := srcName(source)
 	encrypted := isLuks(source)
 
-	if keyFile != "" && !encrypted {
-		// A key file only makes sense for a LUKS source. Silently ignoring a
-		// wrong/mistyped -k would give no indication to the user.
-		return fmt.Errorf("source %s is not LUKS; -k/--key is not valid", source)
-	}
-
+	// Validate the source exists before any key-file reasoning: isLuks on a
+	// missing path reports "not LUKS", which would otherwise mask a typo'd
+	// source path as a "not LUKS" error.
 	if !strings.HasPrefix(source, "/dev/") && source != "" {
 		if _, err := os.Stat(source); os.IsNotExist(err) {
 			// A non-device source that does not exist is almost certainly a typo.
@@ -36,6 +33,12 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 			// cryptic error, and never leave a LUKS mapping open for nothing.
 			return fmt.Errorf("source %s does not exist", source)
 		}
+	}
+
+	if keyFile != "" && !encrypted {
+		// A key file only makes sense for a LUKS source. Silently ignoring a
+		// wrong/mistyped -k would give no indication to the user.
+		return fmt.Errorf("source %s is not LUKS; -k/--key is not valid", source)
 	}
 
 	if encrypted {

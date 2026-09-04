@@ -328,6 +328,23 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("missing source with -k reports did-not-exist, not not-LUKS", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, errors.New("not luks") }
+
+		missing := filepath.Join(t.TempDir(), "nope.img")
+		err := openAndMount(runCmd, runOutput, missing, "/path/to/key", "")
+		if err == nil {
+			t.Fatal("expected an error, got none")
+		}
+		if strings.Contains(err.Error(), "not LUKS") {
+			t.Errorf("missing source should report 'does not exist', not 'not LUKS': %v", err)
+		}
+		if !strings.Contains(err.Error(), "does not exist") {
+			t.Errorf("expected a 'does not exist' error, got %v", err)
+		}
+	})
+
 	t.Run("skips cryptsetup calls", func(t *testing.T) {
 		var cryptCalls int
 		runCmd := func(name string, args ...string) error {
