@@ -194,6 +194,10 @@ func main() {
 	}
 
 	if umountVal != "" {
+		if *keyFile != "" {
+			fmt.Fprintf(os.Stderr, "Error: -k/--key is not valid with -u/--umount (closing a LUKS mapping needs no key)\n")
+			os.Exit(1)
+		}
 		if err := umountAndClose(checkMapped, runCmd, runOutput, source); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
