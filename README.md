@@ -65,7 +65,7 @@ lmount -s <source> -k <keyfile> -m <mountpoint>
 ```
 
 - `-s` / `--source` — path to a block device (e.g. `sda1` or `/dev/sda1`) or a file-backed container.
-- `-k` / `--key` — optional path to a LUKS key file (ignored for non-LUKS sources).
+- `-k` / `--key` — optional path to a LUKS key file. It is only valid when the source is detected as LUKS; passing it for a non-LUKS (or nonexistent) source is an error.
 - `-m` / `--mount` — mount point (default: `~/<source-basename>`). If a file already exists at the path, `.mnt` is appended automatically.
 
 Source resolution: if the source path does not exist as a file or directory, `/dev/<source>` is tried. The first existing path wins; if neither exists, the original value is passed through to `mount`.
