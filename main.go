@@ -66,6 +66,28 @@ func main() {
 	expandVal := firstNonEmpty(*expandFlag, *expandFlagLong)
 	expandSizeVal := firstNonEmpty(*expandSizeFlag, *expandSizeFlagLong)
 
+	createPresent := firstNonEmpty(*createFlag, *createFlagLong) != ""
+	umountPresent := firstNonEmpty(*umount, *umountLong) != ""
+	mountPresent := firstNonEmpty(*sourceFlag, *sourceFlagLong) != ""
+
+	ops := 0
+	if expandVal != "" {
+		ops++
+	}
+	if createPresent {
+		ops++
+	}
+	if umountPresent {
+		ops++
+	}
+	if mountPresent {
+		ops++
+	}
+	if ops > 1 {
+		fmt.Fprintf(os.Stderr, "Error: only one of -s/--source, -u/--umount, -c/--create, -x/--expand may be used\n")
+		os.Exit(1)
+	}
+
 	if expandSizeVal != "" && expandVal == "" {
 		fmt.Fprintf(os.Stderr, "Error: -xs/--expand-size is only valid with -x/--expand\n")
 		os.Exit(1)
