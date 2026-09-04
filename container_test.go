@@ -418,6 +418,35 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("luksClose fails keeps generated key file too", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "c.img")
+		kf := filepath.Join(dir, "keyfile")
+		run := func(name string, args ...string) error {
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
+				// simulate a real container file being created
+				return os.WriteFile(img, []byte("container"), 0644)
+			}
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
+				// simulate the generated key file
+				return os.WriteFile(kf, []byte("keydata"), 0644)
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				return errors.New("close failed")
+			}
+			return nil
+		}
+		err := createContainer(run, run, img, "256M", "", kf, 512)
+		if err == nil || !strings.Contains(err.Error(), "luksClose failed") {
+			t.Errorf("expected luksClose error, got %v", err)
+		}
+		// The generated key file is the container's only key; when the mapping
+		// stays open and the container is kept, the key file must be kept too.
+		if _, statErr := os.Stat(kf); os.IsNotExist(statErr) {
+			t.Error("generated key file should be preserved when luksClose fails")
+		}
+	})
+
 	t.Run("cleans up container and key file on failure", func(t *testing.T) {
 		dir := t.TempDir()
 		img := filepath.Join(dir, "c.img")

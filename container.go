@@ -48,16 +48,18 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		if success {
 			return
 		}
+		if mappedOpen {
+			// A LUKS mapping is still active (luksOpen succeeded but luksClose
+			// failed). Do not delete the backing file underneath it. The
+			// generated key file may be the container's only key, so keep it
+			// too, or the kept container would be permanently unopenable.
+			fmt.Fprintf(os.Stderr, "Warning: LUKS mapping %s is still open; leaving container %s in place\n", srcName(name), name)
+			return
+		}
 		if generatedKey {
 			if err := os.Remove(keyFile); err != nil && !os.IsNotExist(err) {
 				fmt.Fprintf(os.Stderr, "Warning: removing key file %s after failure: %v\n", keyFile, err)
 			}
-		}
-		if mappedOpen {
-			// A LUKS mapping is still active (luksOpen succeeded but luksClose
-			// failed). Do not delete the backing file underneath it.
-			fmt.Fprintf(os.Stderr, "Warning: LUKS mapping %s is still open; leaving container %s in place\n", srcName(name), name)
-			return
 		}
 		if err := os.Remove(name); err != nil && !os.IsNotExist(err) {
 			fmt.Fprintf(os.Stderr, "Warning: removing container %s after failure: %v\n", name, err)
