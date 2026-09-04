@@ -75,6 +75,19 @@ func TestRemoveIfEmpty(t *testing.T) {
 		}
 	})
 
+	t.Run("ignores a non-directory path", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "target")
+		if err := os.WriteFile(file, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := removeIfEmpty(file); err != nil {
+			t.Fatalf("expected non-directory to be ignored, got error: %v", err)
+		}
+		if _, statErr := os.Stat(file); os.IsNotExist(statErr) {
+			t.Error("non-directory must not be removed")
+		}
+	})
+
 	t.Run("keeps non-empty directory", func(t *testing.T) {
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0644); err != nil {

@@ -104,6 +104,11 @@ func removeIfEmpty(path string) error {
 		fmt.Printf("Skipping removal of current working directory %s.\n", path)
 		return nil
 	}
+	if pathErr == nil && !pathInfo.IsDir() {
+		// The path exists but is not a directory (e.g. an unexpected mount
+		// target that resolved elsewhere); there is nothing to remove.
+		return nil
+	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		if os.IsNotExist(err) {
