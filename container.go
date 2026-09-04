@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -120,6 +121,21 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	return nil
 }
 
+const luksMagic = "LUKS\xba\xbe"
+
+func isLuksContainer(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	buf := make([]byte, len(luksMagic))
+	if _, err := io.ReadFull(f, buf); err != nil {
+		return false
+	}
+	return string(buf) == luksMagic
+}
+
 func expandContainer(runSudo, runDirect func(name string, args ...string) error, filename, size, keyFile string) error {
 	total, err := parseSize(size)
 	if err != nil {
@@ -131,6 +147,10 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("stat %s: %w", filename, err)
 	}
 	oldSize := fi.Size()
+
+	if !isLuksContainer(filename) {
+		return fmt.Errorf("not a LUKS container: %s", filename)
+	}
 
 	blockSize := calcBlockSize(total)
 	count := (total + blockSize - 1) / blockSize

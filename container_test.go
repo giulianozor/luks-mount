@@ -418,10 +418,22 @@ func TestCreateContainer(t *testing.T) {
 }
 
 func TestExpandContainer(t *testing.T) {
+
+	// writeLUKSFake writes a file that passes isLuksContainer's magic check
+	// (first 6 bytes "LUKS\xba\xbe"), since expandContainer now rejects
+	// non-LUKS files before growing them.
+	writeLUKSFake := func(t *testing.T, dir, name string) string {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("LUKS\xba\xbe\x00\x02padding"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
 	t.Run("success without key file", func(t *testing.T) {
 		dir := t.TempDir()
-		f := filepath.Join(dir, "test.img")
-		os.WriteFile(f, []byte("initial"), 0644)
+		f := writeLUKSFake(t, dir, "test.img")
 
 		var calls []cmdCall
 		run := func(name string, args ...string) error {
@@ -482,8 +494,7 @@ func TestExpandContainer(t *testing.T) {
 
 	t.Run("success with key file", func(t *testing.T) {
 		dir := t.TempDir()
-		f := filepath.Join(dir, "test.img")
-		os.WriteFile(f, []byte("initial"), 0644)
+		f := writeLUKSFake(t, dir, "test.img")
 
 		var calls []cmdCall
 		run := func(name string, args ...string) error {
@@ -526,8 +537,7 @@ func TestExpandContainer(t *testing.T) {
 
 	t.Run("invalid size", func(t *testing.T) {
 		dir := t.TempDir()
-		f := filepath.Join(dir, "test.img")
-		os.WriteFile(f, []byte("x"), 0644)
+		f := writeLUKSFake(t, dir, "test.img")
 
 		run := func(name string, args ...string) error { return nil }
 		err := expandContainer(run, run, f, "invalid", "")
@@ -538,8 +548,7 @@ func TestExpandContainer(t *testing.T) {
 
 	t.Run("dd fails", func(t *testing.T) {
 		dir := t.TempDir()
-		f := filepath.Join(dir, "test.img")
-		os.WriteFile(f, []byte("x"), 0644)
+		f := writeLUKSFake(t, dir, "test.img")
 
 		run := func(name string, args ...string) error {
 			if name == "dd" {
@@ -555,8 +564,7 @@ func TestExpandContainer(t *testing.T) {
 
 	t.Run("luksOpen fails cleans up", func(t *testing.T) {
 		dir := t.TempDir()
-		f := filepath.Join(dir, "test.img")
-		os.WriteFile(f, []byte("x"), 0644)
+		f := writeLUKSFake(t, dir, "test.img")
 
 		var closeCalled bool
 		run := func(name string, args ...string) error {
@@ -579,8 +587,7 @@ func TestExpandContainer(t *testing.T) {
 
 	t.Run("fsck pre fails cleans up luksClose", func(t *testing.T) {
 		dir := t.TempDir()
-		f := filepath.Join(dir, "test.img")
-		os.WriteFile(f, []byte("x"), 0644)
+		f := writeLUKSFake(t, dir, "test.img")
 
 		var closeCalled bool
 		run := func(name string, args ...string) error {
@@ -598,6 +605,40 @@ func TestExpandContainer(t *testing.T) {
 		}
 		if !closeCalled {
 			t.Error("expected luksClose after fsck pre failure")
+		}
+	})
+
+	t.Run("rejects non-LUKS file without growing it", func(t *testing.T) {
+		dir := t.TempDir()
+		f := filepath.Join(dir, "test.img")
+		if err := os.WriteFile(f, []byte("not a luks container"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		before, err := os.Stat(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var ddCalled bool
+		run := func(name string, args ...string) error {
+			if name == "dd" {
+				ddCalled = true
+			}
+			return nil
+		}
+		err = expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "not a LUKS container") {
+			t.Fatalf("expected not-a-LUKS error, got %v", err)
+		}
+		if ddCalled {
+			t.Error("dd should not be called on a non-LUKS file")
+		}
+		after, err := os.Stat(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Size() != before.Size() {
+			t.Errorf("file size changed from %d to %d; non-LUKS file must not be grown", before.Size(), after.Size())
 		}
 	})
 }
