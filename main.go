@@ -93,6 +93,41 @@ func main() {
 		os.Exit(1)
 	}
 
+	*keyFile = firstNonEmpty(*keyFile, *keyFileLong)
+	*mountPoint = firstNonEmpty(*mountPoint, *mountPointLong)
+	createVal := firstNonEmpty(*createFlag, *createFlagLong)
+	sizeVal := firstNonEmpty(*sizeFlag, *sizeFlagLong)
+	keyFileVal := firstNonEmpty(*createKeyFile, *createKeyFileLong)
+	keySizeVal := 512
+	keySizeSet := false
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "cks":
+			keySizeVal = *createKeySize
+			keySizeSet = true
+		case "key-size":
+			keySizeVal = *createKeySizeLong
+			keySizeSet = true
+		}
+	})
+
+	if sizeVal != "" && createVal == "" {
+		fmt.Fprintf(os.Stderr, "Error: -cs/--size is only valid with -c/--create\n")
+		os.Exit(1)
+	}
+	if keyFileVal != "" && createVal == "" {
+		fmt.Fprintf(os.Stderr, "Error: -ck/--create-key-file is only valid with -c/--create\n")
+		os.Exit(1)
+	}
+	if keySizeSet && createVal == "" {
+		fmt.Fprintf(os.Stderr, "Error: -cks/--key-size is only valid with -c/--create\n")
+		os.Exit(1)
+	}
+	if keySizeSet && keyFileVal == "" {
+		fmt.Fprintf(os.Stderr, "Error: -cks/--key-size is only valid with -ck/--create-key-file\n")
+		os.Exit(1)
+	}
+
 	if expandSizeVal != "" && expandVal == "" {
 		fmt.Fprintf(os.Stderr, "Error: -xs/--expand-size is only valid with -x/--expand\n")
 		os.Exit(1)
@@ -115,33 +150,6 @@ func main() {
 		return
 	}
 
-	*keyFile = firstNonEmpty(*keyFile, *keyFileLong)
-	*mountPoint = firstNonEmpty(*mountPoint, *mountPointLong)
-	createVal := firstNonEmpty(*createFlag, *createFlagLong)
-	sizeVal := firstNonEmpty(*sizeFlag, *sizeFlagLong)
-	keyFileVal := firstNonEmpty(*createKeyFile, *createKeyFileLong)
-	keySizeVal := 512
-	keySizeSet := false
-	flag.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "cks":
-			keySizeVal = *createKeySize
-			keySizeSet = true
-		case "key-size":
-			keySizeVal = *createKeySizeLong
-			keySizeSet = true
-		}
-	})
-
-	if keySizeSet && createVal == "" {
-		fmt.Fprintf(os.Stderr, "Error: -cks/--key-size is only valid with -c/--create\n")
-		os.Exit(1)
-	}
-	if keySizeSet && keyFileVal == "" {
-		fmt.Fprintf(os.Stderr, "Error: -cks/--key-size is only valid with -ck/--create-key-file\n")
-		os.Exit(1)
-	}
-
 	if createVal != "" {
 		if sizeVal == "" {
 			fmt.Fprintf(os.Stderr, "Error: -cs/--size is required with -c/--create\n")
@@ -160,15 +168,6 @@ func main() {
 			os.Exit(1)
 		}
 		return
-	}
-
-	if keyFileVal != "" {
-		fmt.Fprintf(os.Stderr, "Error: -ck/--create-key-file is only valid with -c/--create\n")
-		os.Exit(1)
-	}
-	if sizeVal != "" {
-		fmt.Fprintf(os.Stderr, "Error: -cs/--size is only valid with -c/--create\n")
-		os.Exit(1)
 	}
 
 	source := strings.TrimRight(firstNonEmpty(*sourceFlag, *sourceFlagLong), "/")
