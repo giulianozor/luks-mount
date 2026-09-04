@@ -148,13 +148,37 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
 
+		kf := filepath.Join(t.TempDir(), "key")
+		if err := os.WriteFile(kf, []byte("keymaterial"), 0600); err != nil {
+			t.Fatal(err)
+		}
 		mp := filepath.Join(t.TempDir(), "mnt")
-		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "/path/to/key", mp)
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", kf, mp)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(capturedArgs) < 5 || capturedArgs[1] != "--key-file" || capturedArgs[2] != "/path/to/key" {
+		if len(capturedArgs) < 5 || capturedArgs[1] != "--key-file" || capturedArgs[2] != kf {
 			t.Errorf("key-file not passed: %v", capturedArgs)
+		}
+	})
+
+	t.Run("rejects a missing key file for a LUKS source before opening", func(t *testing.T) {
+		var luksOpenCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		missing := filepath.Join(t.TempDir(), "nokey")
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", missing, filepath.Join(t.TempDir(), "mnt"))
+		if err == nil || !strings.Contains(err.Error(), "does not exist") {
+			t.Errorf("expected a 'does not exist' key file error, got %v", err)
+		}
+		if luksOpenCalls != 0 {
+			t.Errorf("luksOpen should not be attempted with a missing key, got %d calls", luksOpenCalls)
 		}
 	})
 
