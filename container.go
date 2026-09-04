@@ -30,6 +30,12 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		}
 	}
 
+	if existingKeyFile != "" {
+		if _, err := os.Stat(existingKeyFile); err != nil {
+			return fmt.Errorf("existing key file %q does not exist", existingKeyFile)
+		}
+	}
+
 	effectiveKeyFile := existingKeyFile
 	if existingKeyFile == "" {
 		effectiveKeyFile = keyFile

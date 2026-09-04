@@ -148,6 +148,7 @@ func TestCreateContainer(t *testing.T) {
 		dir := t.TempDir()
 		img := filepath.Join(dir, "container.img")
 		kf := filepath.Join(dir, "existing.key")
+		os.WriteFile(kf, []byte("keydata"), 0644)
 		err := createContainer(run, run, img, "256M", kf, "", 512)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -201,6 +202,24 @@ func TestCreateContainer(t *testing.T) {
 		err := createContainer(run, run, img, "256M", "", existingKey, 512)
 		if err == nil || !strings.Contains(err.Error(), "already exists") {
 			t.Errorf("expected 'already exists' error, got %v", err)
+		}
+	})
+
+	t.Run("existing key file must exist", func(t *testing.T) {
+		var ranCryptsetup bool
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" {
+				ranCryptsetup = true
+			}
+			return nil
+		}
+		img := filepath.Join(t.TempDir(), "c.img")
+		err := createContainer(run, run, img, "256M", "/nonexistent/existing.key", "", 512)
+		if err == nil || !strings.Contains(err.Error(), "does not exist") {
+			t.Errorf("expected existing-key-file error, got %v", err)
+		}
+		if ranCryptsetup {
+			t.Error("cryptsetup should not run when the existing key file is missing")
 		}
 	})
 
