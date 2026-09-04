@@ -84,6 +84,12 @@ func removeIfEmpty(path string) error {
 		fmt.Printf("Skipping removal of filesystem root %s.\n", path)
 		return nil
 	}
+	cwdInfo, cwdErr := os.Stat(".")
+	pathInfo, pathErr := os.Stat(path)
+	if cwdErr == nil && pathErr == nil && os.SameFile(cwdInfo, pathInfo) {
+		fmt.Printf("Skipping removal of current working directory %s.\n", path)
+		return nil
+	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err

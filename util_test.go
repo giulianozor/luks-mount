@@ -87,6 +87,25 @@ func TestRemoveIfEmpty(t *testing.T) {
 			t.Error("non-empty directory should not have been removed")
 		}
 	})
+
+	t.Run("never removes current working directory", func(t *testing.T) {
+		dir := t.TempDir()
+		oldWd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chdir(oldWd)
+
+		if err := removeIfEmpty(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+			t.Error("current working directory should not have been removed")
+		}
+	})
 }
 
 func TestParseSize(t *testing.T) {
