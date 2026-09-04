@@ -347,6 +347,25 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects -k for a non-LUKS source", func(t *testing.T) {
+		var mountCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				mountCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, errors.New("not luks") }
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "/path/to/key", filepath.Join(t.TempDir(), "mnt"))
+		if err == nil || !strings.Contains(err.Error(), "not LUKS") {
+			t.Errorf("expected a 'not LUKS' error when -k is passed for a plain source, got %v", err)
+		}
+		if mountCalls != 0 {
+			t.Errorf("mount should not be attempted when -k is invalid for the source, got %d calls", mountCalls)
+		}
+	})
+
 	t.Run("mountpoint path exists as file", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error { return nil }
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, errors.New("not luks") }

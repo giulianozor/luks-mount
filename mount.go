@@ -23,6 +23,12 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	name := srcName(source)
 	encrypted := isLuks(source)
 
+	if keyFile != "" && !encrypted {
+		// A key file only makes sense for a LUKS source. Silently ignoring a
+		// wrong/mistyped -k would give no indication to the user.
+		return fmt.Errorf("source %s is not LUKS; -k/--key is not valid", source)
+	}
+
 	if !strings.HasPrefix(source, "/dev/") && source != "" {
 		if _, err := os.Stat(source); os.IsNotExist(err) {
 			// A non-device source that does not exist is almost certainly a typo.
