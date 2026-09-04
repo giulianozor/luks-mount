@@ -226,6 +226,20 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("container path probe failure is reported, not overwritten", func(t *testing.T) {
+		run := func(name string, args ...string) error { return nil }
+		// A too-long component makes os.Stat fail with a non-isNotExist error
+		// (file name too long). The create must refuse rather than overwrite.
+		bad := strings.Repeat("a", 3000)
+		err := createContainer(run, run, bad, "256M", "", "", 512)
+		if err == nil {
+			t.Fatalf("expected an error for a container path that cannot be probed")
+		}
+		if !strings.Contains(err.Error(), "checking container path") {
+			t.Errorf("expected a checking-container-path error, got %v", err)
+		}
+	})
+
 	t.Run("key file already exists", func(t *testing.T) {
 		run := func(name string, args ...string) error { return nil }
 		dir := t.TempDir()

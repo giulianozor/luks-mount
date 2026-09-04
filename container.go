@@ -19,6 +19,11 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 
 	if _, err := os.Stat(name); err == nil {
 		return fmt.Errorf("container %q already exists", name)
+	} else if !os.IsNotExist(err) {
+		// A permission error (or similar) probing the path means we cannot
+		// know whether a container is already there. Continuing would risk
+		// overwriting a container we could not even stat.
+		return fmt.Errorf("checking container path %s: %w", name, err)
 	}
 
 	if keyFile != "" {
