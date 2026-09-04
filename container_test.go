@@ -299,6 +299,49 @@ func TestCreateContainer(t *testing.T) {
 			t.Errorf("expected luksClose error, got %v", err)
 		}
 	})
+
+	t.Run("cleans up container and key file on failure", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "c.img")
+		kf := filepath.Join(dir, "keyfile")
+
+		run := func(name string, args ...string) error {
+			if name == "mkfs.ext4" {
+				return errors.New("mkfs failed")
+			}
+			return nil
+		}
+
+		err := createContainer(run, run, img, "256M", "", kf, 512)
+		if err == nil || !strings.Contains(err.Error(), "mkfs.ext4 failed") {
+			t.Fatalf("expected mkfs error, got %v", err)
+		}
+		if _, statErr := os.Stat(img); !os.IsNotExist(statErr) {
+			t.Errorf("container %q should have been removed after failure", img)
+		}
+		if _, statErr := os.Stat(kf); !os.IsNotExist(statErr) {
+			t.Errorf("key file %q should have been removed after failure", kf)
+		}
+	})
+
+	t.Run("does not remove file on early validation error", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "c.img")
+
+		// "container already exists" returns before any file creation/cleanup
+		// is set up, so a pre-existing file must be left untouched.
+		if err := os.WriteFile(img, []byte("keep"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		run := func(name string, args ...string) error { return nil }
+		err := createContainer(run, run, img, "256M", "", "", 512)
+		if err == nil {
+			t.Fatal("expected 'already exists' error")
+		}
+		if _, statErr := os.Stat(img); os.IsNotExist(statErr) {
+			t.Errorf("file %q should not have been removed on early validation error", img)
+		}
+	})
 }
 
 func TestExpandContainer(t *testing.T) {

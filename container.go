@@ -34,11 +34,28 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		effectiveKeyFile = keyFile
 	}
 
+	generatedKey := false
+	success := false
+	defer func() {
+		if success {
+			return
+		}
+		if generatedKey {
+			if err := os.Remove(keyFile); err != nil && !os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "Warning: removing key file %s after failure: %v\n", keyFile, err)
+			}
+		}
+		if err := os.Remove(name); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Warning: removing container %s after failure: %v\n", name, err)
+		}
+	}()
+
 	if keyFile != "" {
 		fmt.Printf("Creating key file %s...\n", keyFile)
 		if err := runDirect("dd", "if=/dev/urandom", "of="+keyFile, fmt.Sprintf("bs=%d", keySize), "count=1"); err != nil {
 			return fmt.Errorf("creating key file: %w", err)
 		}
+		generatedKey = true
 	}
 
 	fmt.Printf("Creating container %s...\n", name)
@@ -85,6 +102,7 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	fmt.Println("Done.")
+	success = true
 	return nil
 }
 
