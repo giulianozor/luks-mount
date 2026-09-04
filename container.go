@@ -55,10 +55,10 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 
 	if keyFile != "" {
 		fmt.Printf("Creating key file %s...\n", keyFile)
+		generatedKey = true
 		if err := runDirect("dd", "if=/dev/urandom", "of="+keyFile, fmt.Sprintf("bs=%d", keySize), "count=1"); err != nil {
 			return fmt.Errorf("creating key file: %w", err)
 		}
-		generatedKey = true
 	}
 
 	fmt.Printf("Creating container %s...\n", name)

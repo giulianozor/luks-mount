@@ -234,6 +234,58 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("dd key file fails cleans up partial key file and container", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "c.img")
+		kf := filepath.Join(dir, "keyfile")
+
+		run := func(name string, args ...string) error {
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
+				// simulate a partial write before failure
+				if err := os.WriteFile(kf, []byte("partial"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				return errors.New("dd keyfile failed")
+			}
+			return nil
+		}
+
+		err := createContainer(run, run, img, "256M", "", kf, 512)
+		if err == nil || !strings.Contains(err.Error(), "creating key file") {
+			t.Fatalf("expected key file error, got %v", err)
+		}
+		if _, statErr := os.Stat(kf); !os.IsNotExist(statErr) {
+			t.Errorf("partial key file %q should have been removed", kf)
+		}
+		if _, statErr := os.Stat(img); !os.IsNotExist(statErr) {
+			t.Errorf("container %q should not exist (key file failure precedes container creation)", img)
+		}
+	})
+
+	t.Run("dd container fails cleans up key file", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "c.img")
+		kf := filepath.Join(dir, "keyfile")
+
+		run := func(name string, args ...string) error {
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
+				return nil
+			}
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
+				return errors.New("dd container failed")
+			}
+			return nil
+		}
+
+		err := createContainer(run, run, img, "256M", "", kf, 512)
+		if err == nil || !strings.Contains(err.Error(), "creating container") {
+			t.Fatalf("expected container error, got %v", err)
+		}
+		if _, statErr := os.Stat(kf); !os.IsNotExist(statErr) {
+			t.Errorf("key file %q should have been removed when container creation failed", kf)
+		}
+	})
+
 	t.Run("dd container fails", func(t *testing.T) {
 		run := func(name string, args ...string) error {
 			if name == "dd" {
