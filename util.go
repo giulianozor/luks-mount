@@ -115,6 +115,10 @@ func parseSize(s string) (int64, error) {
 	suffix := strings.ToUpper(s[len(s)-1:])
 	numStr := s[:len(s)-1]
 
+	if numStr != "" && (numStr[0] == '+' || numStr[0] == '-') {
+		return 0, fmt.Errorf("invalid size %q: must be a positive integer with suffix M or G", s)
+	}
+
 	num, err := strconv.ParseInt(numStr, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("invalid size %q: %w", s, err)
