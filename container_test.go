@@ -664,6 +664,65 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("fsck pre failure closes mapping before shrinking", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var order []string
+		run := func(name string, args ...string) error {
+			if name == "fsck.ext4" && len(args) > 1 && args[0] == "-f" && args[1] == "-y" {
+				return errors.New("fsck fail")
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				order = append(order, "close")
+			}
+			if name == "truncate" && len(args) >= 2 && args[0] == "-s" && !strings.HasPrefix(args[1], "+") {
+				order = append(order, "shrink")
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "fsck.ext4 (pre)") {
+			t.Errorf("expected fsck pre error, got %v", err)
+		}
+		if len(order) != 2 || order[0] != "close" || order[1] != "shrink" {
+			t.Errorf("expected close-then-shrink order, got %v", order)
+		}
+	})
+
+	t.Run("fsck pre failure does not shrink when close fails", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var shrinkArgs, growArgs []string
+		run := func(name string, args ...string) error {
+			if name == "fsck.ext4" && len(args) > 1 && args[0] == "-f" && args[1] == "-y" {
+				return errors.New("fsck fail")
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				return errors.New("close fail")
+			}
+			if name == "truncate" && len(args) >= 2 && args[0] == "-s" {
+				if strings.HasPrefix(args[1], "+") {
+					growArgs = args
+				} else {
+					shrinkArgs = args
+				}
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "fsck.ext4 (pre)") {
+			t.Errorf("expected fsck pre error, got %v", err)
+		}
+		if len(growArgs) == 0 {
+			t.Error("expected the container to have been grown before luksOpen")
+		}
+		if len(shrinkArgs) != 0 {
+			t.Errorf("expected no shrink when luksClose fails, got %v", shrinkArgs)
+		}
+	})
+
 	t.Run("resize2fs fails does not roll back", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")

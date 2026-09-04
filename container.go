@@ -210,10 +210,15 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 
 	fmt.Printf("Checking filesystem %s...\n", devMapper)
 	if err := runSudo("fsck.ext4", "-f", "-y", devMapper); err != nil {
-		rollback()
+		// Detach the mapping before shrinking the backing file, so we never
+		// truncate a file that a live /dev/mapper/NAME still references. If the
+		// mapping cannot be closed, leave the grown file in place rather than
+		// resizing it under an open mapping.
 		if closeErr := runSudo("cryptsetup", "luksClose", name); closeErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: luksClose after fsck (pre) failure: %v\n", closeErr)
+			return fmt.Errorf("fsck.ext4 (pre) failed: %w (mapping left open; container not shrunk)", err)
 		}
+		rollback()
 		return fmt.Errorf("fsck.ext4 (pre) failed: %w", err)
 	}
 
