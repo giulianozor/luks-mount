@@ -204,13 +204,11 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	// grow it again (non-idempotent). Once resize2fs runs the filesystem may
 	// be partially grown, so it must NOT be rolled back after that point.
 	resized := false
-	rollback := func() {
+	rollback := func() error {
 		if resized {
-			return
+			return nil
 		}
-		if rollbackErr := runDirect("truncate", "-s", fmt.Sprintf("%d", oldSize), filename); rollbackErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: restoring container size after failure: %v\n", rollbackErr)
-		}
+		return runDirect("truncate", "-s", fmt.Sprintf("%d", oldSize), filename)
 	}
 
 	name := srcName(filename)
@@ -221,7 +219,9 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	luksArgs = append(luksArgs, filename, name)
 	fmt.Printf("Opening LUKS container %s...\n", filename)
 	if err := runSudo("cryptsetup", luksArgs...); err != nil {
-		rollback()
+		if rbErr := rollback(); rbErr != nil {
+			return fmt.Errorf("luksOpen failed: %w (container size not restored: %v)", err, rbErr)
+		}
 		return fmt.Errorf("luksOpen failed: %w", err)
 	}
 
@@ -237,7 +237,9 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 			fmt.Fprintf(os.Stderr, "Warning: luksClose after fsck (pre) failure: %v\n", closeErr)
 			return fmt.Errorf("fsck.ext4 (pre) failed: %w (mapping left open; container not shrunk)", err)
 		}
-		rollback()
+		if rbErr := rollback(); rbErr != nil {
+			return fmt.Errorf("fsck.ext4 (pre) failed: %w (container size not restored: %v)", err, rbErr)
+		}
 		return fmt.Errorf("fsck.ext4 (pre) failed: %w", err)
 	}
 

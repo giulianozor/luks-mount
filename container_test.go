@@ -876,6 +876,34 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("luksOpen fails surfaces a rollback failure", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var shrinkErr bool
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				return errors.New("open fail")
+			}
+			if name == "truncate" && len(args) >= 2 && args[0] == "-s" && !strings.HasPrefix(args[1], "+") {
+				// The shrinking rollback fails, leaving the file grown.
+				shrinkErr = true
+				return errors.New("shrink fail")
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "luksOpen failed") {
+			t.Errorf("expected luksOpen error, got %v", err)
+		}
+		if !shrinkErr {
+			t.Fatal("expected the rollback truncate to be attempted")
+		}
+		if !strings.Contains(err.Error(), "container size not restored") {
+			t.Errorf("expected a size-not-restored hint when the rollback fails, got %v", err)
+		}
+	})
+
 	t.Run("rejects non-LUKS file without growing it", func(t *testing.T) {
 		dir := t.TempDir()
 		f := filepath.Join(dir, "test.img")
