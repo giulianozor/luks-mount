@@ -48,6 +48,9 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		mountPoint += ".mnt"
 	}
 
+	_, statErr := os.Stat(mountPoint)
+	createdMountpoint := os.IsNotExist(statErr)
+
 	fmt.Printf("Creating mount point %s...\n", mountPoint)
 	if err := os.MkdirAll(mountPoint, 0755); err != nil {
 		if encrypted {
@@ -64,6 +67,9 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	if err := runCmd("mount", device, mountPoint); err != nil {
 		if encrypted {
 			luksClose(name)
+		}
+		if createdMountpoint {
+			_ = os.Remove(mountPoint)
 		}
 		return fmt.Errorf("mount failed: %w", err)
 	}

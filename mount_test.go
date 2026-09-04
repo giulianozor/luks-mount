@@ -109,12 +109,39 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
 
-		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", filepath.Join(t.TempDir(), "mnt"))
+		mp := filepath.Join(t.TempDir(), "mnt")
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", mp)
 		if err == nil || !strings.Contains(err.Error(), "mount failed") {
 			t.Errorf("expected mount error, got %v", err)
 		}
 		if !calledClose {
 			t.Error("luksClose was not called — cleanup should run on mount error")
+		}
+		if _, statErr := os.Stat(mp); !os.IsNotExist(statErr) {
+			t.Error("freshly-created mountpoint should be removed on mount failure")
+		}
+	})
+
+	t.Run("mount error keeps pre-existing mountpoint", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				return errors.New("mount fail")
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		mp := filepath.Join(t.TempDir(), "mnt")
+		if err := os.MkdirAll(mp, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", mp)
+		if err == nil || !strings.Contains(err.Error(), "mount failed") {
+			t.Fatalf("expected mount error, got %v", err)
+		}
+		if _, statErr := os.Stat(mp); os.IsNotExist(statErr) {
+			t.Error("pre-existing mountpoint should not be removed on mount failure")
 		}
 	})
 
