@@ -17,6 +17,13 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("minimum container size is 32M, got %s", size)
 	}
 
+	// A generated key file and the container are separate objects; if they are
+	// the same path, writing the key overwrites the file that then becomes the
+	// container (and vice versa), silently corrupting the key.
+	if keyFile != "" && keyFile == name {
+		return fmt.Errorf("key file path and container path must be different, both are %q", name)
+	}
+
 	if _, err := os.Stat(name); err == nil {
 		return fmt.Errorf("container %q already exists", name)
 	} else if !os.IsNotExist(err) {

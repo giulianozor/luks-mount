@@ -240,6 +240,16 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects key file path equal to container path", func(t *testing.T) {
+		run := func(name string, args ...string) error { return nil }
+		dir := t.TempDir()
+		img := filepath.Join(dir, "same.img")
+		err := createContainer(run, run, img, "256M", "", img, 512)
+		if err == nil || !strings.Contains(err.Error(), "must be different") {
+			t.Errorf("expected a key-file/container collision error, got %v", err)
+		}
+	})
+
 	t.Run("key file already exists", func(t *testing.T) {
 		run := func(name string, args ...string) error { return nil }
 		dir := t.TempDir()
