@@ -13,15 +13,17 @@ func TestOpenAndMount_luks(t *testing.T) {
 		runCmd := func(name string, args ...string) error { return nil }
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
 
-		home, err := os.UserHomeDir()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { os.RemoveAll(filepath.Join(home, "__test_dev__")) })
+		home := t.TempDir()
+		orig := userHomeDir
+		userHomeDir = func() (string, error) { return home, nil }
+		t.Cleanup(func() { userHomeDir = orig })
 
-		err = openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", "")
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, statErr := os.Stat(filepath.Join(home, "__test_dev__")); os.IsNotExist(statErr) {
+			t.Error("default mountpoint was not created under the home directory")
 		}
 	})
 

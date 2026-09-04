@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+var userHomeDir = os.UserHomeDir
+
 func openAndMount(runCmd func(name string, args ...string) error, runOutput func(name string, args ...string) ([]byte, error), source, keyFile, mountPoint string) error {
 	isLuks := func(source string) bool {
 		_, err := runOutput("cryptsetup", "isLuks", source)
@@ -40,7 +42,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 			}
 			return fmt.Errorf("cannot infer mount point name from empty source")
 		}
-		home, err := os.UserHomeDir()
+		home, err := userHomeDir()
 		if err != nil {
 			if encrypted {
 				luksClose(name)
