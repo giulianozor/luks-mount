@@ -382,21 +382,24 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	}
 
 	out, findErr := runOutputDirect("findmnt", "-n", "-l", "-o", "TARGET", "-S", search)
-	if findErr != nil {
-		// The probe failed, so we cannot tell whether the filesystem is still
-		// mounted or where it is. Closing a LUKS mapping under an unmount probe
-		// failure could strand a live mount, so bail out without unmounting or
-		// closing.
+	targets := parseFindmntTargets(out)
+	if findErr != nil && (len(targets) > 0 || encrypted) {
+		// findmnt both listed targets and reported failure, or a mapping probe
+		// says the LUKS device is open but findmnt cannot see it. Either way we
+		// cannot tell whether a filesystem is still mounted, and closing a LUKS
+		// mapping under an uncertain probe could strand a live mount, so bail
+		// out without unmounting or closing.
 		return fmt.Errorf("findmnt failed for %s: %v", search, findErr)
 	}
-	var errs []string
-	targets := parseFindmntTargets(out)
+	// Otherwise findmnt merely reported that nothing matches: for a plain
+	// source that is simply not mounted (its backing file still exists).
 	if !encrypted && len(targets) == 0 {
 		// A plain source that findmnt cannot find is simply not mounted; say so
 		// rather than reporting the same success ("Done.") as a real unmount.
 		fmt.Printf("Nothing mounted at %s.\n", source)
 		return nil
 	}
+	var errs []string
 	// Unmount deeper (nested) targets before shallower ones: umounting a parent
 	// path while it still holds a child mount fails with "target is busy".
 	// findmnt returns mounts in arbitrary order, so sort longest-path first. This

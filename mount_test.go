@@ -1711,7 +1711,7 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		}
 	})
 
-	t.Run("reports findmnt failure as an error, not success", func(t *testing.T) {
+	t.Run("treats a plain source with no findmnt output as not mounted", func(t *testing.T) {
 		var umountCalls int
 		runCmd := func(name string, args ...string) error {
 			if name == "umount" {
@@ -1720,22 +1720,31 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 			return nil
 		}
 		runOutput := func(name string, args ...string) ([]byte, error) {
-			return nil, fmt.Errorf("boom")
+			// findmnt exits nonzero when nothing matches its search.
+			return nil, fmt.Errorf("exit status 1")
 		}
 		checkMapped := func(name string) bool { return false }
 
-		err := umountAndClose(checkMapped, runCmd, runOutput, "/dev/__test_dev__")
-		if err == nil {
-			t.Fatalf("expected an error when findmnt fails")
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
 		}
-		if !strings.Contains(fmt.Sprintf("%v", err), "findmnt failed") {
-			t.Errorf("expected findmnt failure to be reported, got %v", err)
+		oldStdout := os.Stdout
+		os.Stdout = w
+		defer func() { os.Stdout = oldStdout }()
+
+		err = umountAndClose(checkMapped, runCmd, runOutput, "/dev/__test_dev__")
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		if err != nil {
+			t.Fatalf("a plain source with no findmnt match should not error, got %v", err)
 		}
-		if !strings.Contains(fmt.Sprintf("%v", err), "/dev/__test_dev__") {
-			t.Errorf("expected the search spec in the findmnt error, got %v", err)
+		if !strings.Contains(buf.String(), "Nothing mounted at /dev/__test_dev__") {
+			t.Errorf("expected a nothing-mounted note, got %q", buf.String())
 		}
 		if umountCalls != 0 {
-			t.Errorf("expected no umount calls when findmnt fails, got %d", umountCalls)
+			t.Errorf("expected no umount calls when nothing is mounted, got %d", umountCalls)
 		}
 	})
 
