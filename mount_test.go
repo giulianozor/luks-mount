@@ -872,7 +872,42 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if cryptCalls != 0 {
-			t.Errorf("cryptsetup must not be probed for a readable non-LUKS file, got %d calls", cryptCalls)
+			t.Errorf("expected 0 cryptsetup calls, got %d", cryptCalls)
+		}
+	})
+
+	t.Run("says when a plain source is not mounted", func(t *testing.T) {
+		var runs []cmdCall
+		runCmd := func(name string, args ...string) error {
+			runs = append(runs, cmdCall{name, args})
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+		checkMapped := func(name string) bool { return false }
+
+		src := filepath.Join(t.TempDir(), "plain.img")
+		os.WriteFile(src, []byte("x"), 0644)
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldStdout := os.Stdout
+		os.Stdout = w
+		defer func() { os.Stdout = oldStdout }()
+
+		err = umountAndClose(checkMapped, runCmd, runOutput, src)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		if !strings.Contains(buf.String(), "Nothing mounted") {
+			t.Errorf("expected a nothing-mounted note, got %q", buf.String())
+		}
+		if len(runs) != 0 {
+			t.Errorf("no commands should run for an unmounted plain source, got %v", runs)
 		}
 	})
 

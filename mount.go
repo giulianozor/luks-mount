@@ -337,6 +337,12 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	}
 	var errs []string
 	targets := parseFindmntTargets(out)
+	if !encrypted && len(targets) == 0 {
+		// A plain source that findmnt cannot find is simply not mounted; say so
+		// rather than reporting the same success ("Done.") as a real unmount.
+		fmt.Printf("Nothing mounted at %s.\n", source)
+		return nil
+	}
 	// Unmount deeper (nested) targets before shallower ones: umounting a parent
 	// path while it still holds a child mount fails with "target is busy".
 	// findmnt returns mounts in arbitrary order, so sort longest-path first. This
