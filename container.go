@@ -336,8 +336,9 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	// open and mounted would extend the file underneath a live filesystem and
 	// can leave device-mapper in an inconsistent state even if the size is
 	// later rolled back. Refuse up front, mirroring openAndMount's guard.
+	// The probe catches any open mapping, mounted or not.
 	if mapperProbe(srcName(filename)) {
-		return fmt.Errorf("container %s is mounted as /dev/mapper/%s; unmount it before expanding", filename, srcName(filename))
+		return fmt.Errorf("container %s is open as /dev/mapper/%s; unmount and close it before expanding", filename, srcName(filename))
 	}
 
 	if err := runDirect("truncate", "-s", fmt.Sprintf("+%d", total), filename); err != nil {

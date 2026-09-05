@@ -1145,8 +1145,8 @@ func TestExpandContainer(t *testing.T) {
 		f := writeLUKSFake(t, dir, "test.img")
 
 		err := expandContainer(run, run, f, "256M", "")
-		if err == nil || !strings.Contains(err.Error(), "unmount it before expanding") {
-			t.Errorf("expected an already-mounted error, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), "unmount and close it before expanding") {
+			t.Errorf("expected an open-mapping error, got %v", err)
 		}
 		for _, r := range runs {
 			if r.name == "truncate" {
