@@ -1679,6 +1679,9 @@ func TestExpandContainer(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "fsck.ext4 (post)") {
 			t.Errorf("expected fsck post error, got %v", err)
 		}
+		if !strings.Contains(err.Error(), "container left grown; filesystem resized") {
+			t.Errorf("expected the container to be reported as left grown, got %v", err)
+		}
 		if !closeCalled {
 			t.Error("expected luksClose after the post-resize check failed")
 		}

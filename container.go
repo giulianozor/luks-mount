@@ -406,7 +406,10 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 			fmt.Fprintf(os.Stderr, "Warning: luksClose after fsck (post) failure: %v (mapping left open)\n", closeErr)
 			return fmt.Errorf("fsck.ext4 (post) failed: %w (mapping left open)", err)
 		}
-		return fmt.Errorf("fsck.ext4 (post) failed: %w", err)
+		// resize2fs already succeeded by this point, so the backing file is
+		// kept grown and the filesystem resized; say so rather than implying
+		// the expand was rolled back.
+		return fmt.Errorf("fsck.ext4 (post) failed: %w (container left grown; filesystem resized)", err)
 	}
 
 	fmt.Printf("Closing LUKS container %s...\n", name)
