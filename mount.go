@@ -78,6 +78,12 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	}
 
 	if keyFile != "" && encrypted {
+		// Passing the source itself as the key would make cryptsetup read a
+		// LUKS header as a key and fail cryptically. Compare canonical paths
+		// so a relative or symlinked spelling of the same file is caught too.
+		if sameFilePath(keyFile, source) {
+			return fmt.Errorf("key file path and source path must be different, both are %q", filepath.Clean(source))
+		}
 		if err := checkKeyFile(keyFile, "key file"); err != nil {
 			// Fail fast with a clear message on a typo'd key, rather than after
 			// luksOpen returns a cryptic error (and before any mapping is opened).

@@ -482,6 +482,32 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a key file that is the source itself", func(t *testing.T) {
+		var luksOpenCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		// A magic-prefixed file the sniff detects as LUKS; passing it as its
+		// own key would make cryptsetup read a LUKS header as a key.
+		src := filepath.Join(t.TempDir(), "container.img")
+		if err := os.WriteFile(src, []byte("LUKS\xba\xbe"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		err := openAndMount(runCmd, runOutput, src, src, filepath.Join(t.TempDir(), "mnt"))
+		if err == nil || !strings.Contains(err.Error(), "must be different") {
+			t.Errorf("expected a key-file/source collision error, got %v", err)
+		}
+		if luksOpenCalls != 0 {
+			t.Errorf("luksOpen must not be attempted for a colliding key file, got %d calls", luksOpenCalls)
+		}
+	})
+
 	t.Run("mount error", func(t *testing.T) {
 		var calledClose bool
 		runCmd := func(name string, args ...string) error {
