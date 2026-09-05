@@ -288,6 +288,25 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("missing key file parent directory is rejected up front", func(t *testing.T) {
+		var cryptCalls int
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" {
+				cryptCalls++
+			}
+			return nil
+		}
+		img := filepath.Join(t.TempDir(), "c.img")
+		kf := filepath.Join(t.TempDir(), "missing-subdir", "keyfile")
+		err := createContainer(run, run, img, "256M", "", kf, 512)
+		if err == nil || !strings.Contains(err.Error(), "key file directory") {
+			t.Errorf("expected a key-file-directory error, got %v", err)
+		}
+		if cryptCalls != 0 {
+			t.Errorf("no cryptsetup work should happen when the key file directory is missing, got %d calls", cryptCalls)
+		}
+	})
+
 	t.Run("key file already exists", func(t *testing.T) {
 		run := func(name string, args ...string) error { return nil }
 		dir := t.TempDir()

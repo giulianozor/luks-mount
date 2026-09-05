@@ -7,6 +7,23 @@ import (
 	"path/filepath"
 )
 
+// checkParentDir verifies that the directory holding path exists and is
+// actually a directory, so a later write (e.g. dd) fails with a clear message
+// instead of a cryptic "No such file or directory".
+func checkParentDir(path, what string) error {
+	if parent := filepath.Dir(path); parent != "" {
+		if fi, err := os.Stat(parent); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("%s directory %s does not exist", what, parent)
+			}
+			return fmt.Errorf("checking %s directory %s: %w", what, parent, err)
+		} else if !fi.IsDir() {
+			return fmt.Errorf("%s parent %s is not a directory", what, parent)
+		}
+	}
+	return nil
+}
+
 func createContainer(runSudo, runDirect func(name string, args ...string) error, name, size, existingKeyFile, keyFile string, keySize int) error {
 	total, err := parseSize(size)
 	if err != nil {
@@ -26,6 +43,9 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("key file path and container path must be different, both are %q", filepath.Clean(name))
 	}
 
+	// The container is written with dd, which cannot create missing parent
+	// directories; failing here with a clear message beats a cryptic dd error
+	// after a generated key file has already been created.
 	if _, err := os.Stat(name); err == nil {
 		return fmt.Errorf("container %q already exists", name)
 	} else if !os.IsNotExist(err) {
@@ -35,18 +55,8 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("checking container path %s: %w", name, err)
 	}
 
-	// The container is written with dd, which cannot create missing parent
-	// directories; failing here with a clear message beats a cryptic dd error
-	// after a generated key file has already been created.
-	if parent := filepath.Dir(name); parent != "" {
-		if fi, err := os.Stat(parent); err != nil {
-			if os.IsNotExist(err) {
-				return fmt.Errorf("container directory %s does not exist", parent)
-			}
-			return fmt.Errorf("checking container directory %s: %w", parent, err)
-		} else if !fi.IsDir() {
-			return fmt.Errorf("container parent %s is not a directory", parent)
-		}
+	if err := checkParentDir(name, "container"); err != nil {
+		return err
 	}
 
 	if keyFile != "" {
@@ -55,6 +65,11 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		}
 		if keySize <= 0 {
 			return fmt.Errorf("key file size must be positive, got %d", keySize)
+		}
+		// The generated key file is also written with dd and needs its parent
+		// directory present.
+		if err := checkParentDir(keyFile, "key file"); err != nil {
+			return err
 		}
 	}
 
