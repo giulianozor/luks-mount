@@ -126,10 +126,12 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	fmt.Printf("Creating ext4 filesystem on %s...\n", devMapper)
 	if err := runSudo("mkfs.ext4", "-m", "0", devMapper); err != nil {
 		if closeErr := runSudo("cryptsetup", "luksClose", containerName); closeErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: luksClose after mkfs failure: %v\n", closeErr)
-		} else {
-			mappedOpen = false
+			// The mapping stays open, so the container and any generated key
+			// file are deliberately kept. Say so, or the user may assume the
+			// failed create was fully rolled back.
+			return fmt.Errorf("mkfs.ext4 failed: %w (mapping left open: %v)", err, closeErr)
 		}
+		mappedOpen = false
 		return fmt.Errorf("mkfs.ext4 failed: %w", err)
 	}
 

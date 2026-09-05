@@ -444,6 +444,35 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("mkfs and luksClose failures surface a left-open mapping", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "c.img")
+		run := func(name string, args ...string) error {
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
+				// simulate a real container file being created
+				return os.WriteFile(img, []byte("container"), 0644)
+			}
+			if name == "mkfs.ext4" {
+				return errors.New("mkfs failed")
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				return errors.New("close failed")
+			}
+			return nil
+		}
+		err := createContainer(run, run, img, "256M", "", "", 512)
+		if err == nil || !strings.Contains(err.Error(), "mkfs.ext4 failed") {
+			t.Errorf("expected mkfs.ext4 error, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "mapping left open") {
+			t.Errorf("expected a left-open-mapping hint when luksClose fails after mkfs, got %v", err)
+		}
+		// The mapping could not be closed, so the container file must be kept.
+		if _, statErr := os.Stat(img); os.IsNotExist(statErr) {
+			t.Error("container file should be preserved when luksClose fails")
+		}
+	})
+
 	t.Run("luksClose fails", func(t *testing.T) {
 		img := filepath.Join(t.TempDir(), "c.img")
 		run := func(name string, args ...string) error {
