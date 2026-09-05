@@ -125,7 +125,7 @@ func TestRunMain(t *testing.T) {
 		// positional" error is emitted instead of the operation running.
 		{"expand with positional argument", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G", "extra"}, 1, "unexpected positional argument", false, "stat /nonexistent"},
 		{"create with positional argument", []string{"-c", "img", "-cs", "32M", "extra"}, 1, "unexpected positional argument", false, ""},
-		{"mount with positional argument", []string{"-s", "/dev/__test_dev__", "extra"}, 1, "unexpected positional argument", false, ""},
+		{"mount with positional argument", []string{"-s", "/dev/__test_dev__", "extra"}, 1, "unexpected positional argument", false, "stat /dev/__test_dev__"},
 		{"create with an invalid container name", []string{"-c", "bad name.txt", "-cs", "32M"}, 1, "invalid device-mapper name", false, ""},
 	}
 	for _, tc := range tests {
