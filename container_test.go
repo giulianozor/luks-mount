@@ -1597,6 +1597,64 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("fsck pre failure surfaces a rollback failure", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var shrinkErr bool
+		run := func(name string, args ...string) error {
+			if name == "fsck.ext4" && len(args) > 1 && args[0] == "-f" && args[1] == "-y" {
+				return errors.New("fsck fail")
+			}
+			if name == "truncate" && len(args) >= 2 && args[0] == "-s" && !strings.HasPrefix(args[1], "+") {
+				// The shrinking rollback fails, leaving the container grown.
+				shrinkErr = true
+				return errors.New("shrink fail")
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "fsck.ext4 (pre)") {
+			t.Errorf("expected fsck pre error, got %v", err)
+		}
+		if !shrinkErr {
+			t.Fatal("expected the rollback truncate to be attempted")
+		}
+		if !strings.Contains(err.Error(), "container size not restored") {
+			t.Errorf("expected a size-not-restored hint when the rollback fails, got %v", err)
+		}
+	})
+
+	t.Run("fsck post failure closes the mapping", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var closeCalled, resizeCalled bool
+		run := func(name string, args ...string) error {
+			if name == "fsck.ext4" && args[0] == "-f" && args[1] == "-y" {
+				// Only fail the post-resize check (the second fsck).
+				if resizeCalled {
+					return errors.New("fsck post fail")
+				}
+				return nil
+			}
+			if name == "resize2fs" {
+				resizeCalled = true
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				closeCalled = true
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "fsck.ext4 (post)") {
+			t.Errorf("expected fsck post error, got %v", err)
+		}
+		if !closeCalled {
+			t.Error("expected luksClose after the post-resize check failed")
+		}
+	})
+
 	t.Run("fsck pre failure closes mapping before shrinking", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")
