@@ -216,16 +216,28 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	}
 	var errs []string
 	mounts := strings.Split(strings.TrimSpace(string(out)), "\n")
-	// Unmount deeper (nested) targets before shallower ones: umounting a parent
-	// path while it still holds a child mount fails with "target is busy".
-	// findmnt returns mounts in arbitrary order, so sort longest-path first. This
-	// is safe because a mount point can only ever be a child of another mount.
-	sort.Sort(sort.Reverse(sort.StringSlice(mounts)))
-	unmountFailed := false
+	// findmnt may repeat a TARGET when multiple stacked/bind mounts share a
+	// mount point. Unmounting (and then removing) the same path twice only
+	// produces a spurious second-umount error, so dedupe first.
+	seen := make(map[string]struct{}, len(mounts))
+	targets := make([]string, 0, len(mounts))
 	for _, m := range mounts {
 		if m == "" {
 			continue
 		}
+		if _, ok := seen[m]; ok {
+			continue
+		}
+		seen[m] = struct{}{}
+		targets = append(targets, m)
+	}
+	// Unmount deeper (nested) targets before shallower ones: umounting a parent
+	// path while it still holds a child mount fails with "target is busy".
+	// findmnt returns mounts in arbitrary order, so sort longest-path first. This
+	// is safe because a mount point can only ever be a child of another mount.
+	sort.Sort(sort.Reverse(sort.StringSlice(targets)))
+	unmountFailed := false
+	for _, m := range targets {
 		fmt.Printf("Unmounting %s...\n", m)
 		if err := runCmd("umount", m); err != nil {
 			errs = append(errs, fmt.Sprintf("umount %s: %v", m, err))

@@ -842,6 +842,32 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("dedupes repeated findmnt targets", func(t *testing.T) {
+		dir := t.TempDir()
+		mp1 := filepath.Join(dir, "mp1")
+
+		var umounts []string
+		runCmd := func(name string, args ...string) error {
+			if name == "umount" && len(args) > 0 {
+				umounts = append(umounts, args[0])
+			}
+			return nil
+		}
+		// findmnt lists the same target twice (stacked/bind mounts).
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			return []byte(mp1 + "\n" + mp1), nil
+		}
+		checkMapped := func(name string) bool { return false }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, "/dev/__test_dev__")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(umounts) != 1 {
+			t.Errorf("expected a single umount for a duplicated target, got %d: %v", len(umounts), umounts)
+		}
+	})
+
 	t.Run("unmounts nested targets before parents", func(t *testing.T) {
 		// findmnt returns mounts in arbitrary order; the deepest (child) target
 		// must be unmounted before its parent, or the parent fails as busy.
