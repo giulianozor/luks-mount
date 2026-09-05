@@ -51,6 +51,74 @@ func TestLinuxOnlyError(t *testing.T) {
 	}
 }
 
+// captureStderr runs fn with os.Stderr redirected and returns what fn wrote to
+// stderr, restoring the original descriptor afterwards.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = oldStderr }()
+	fn()
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	return buf.String()
+}
+
+// TestRunMain exercises runMain's argument validation entirely before any
+// operation runs, so no privileged command (sudo cryptsetup, mount, dd) is ever
+// reached. A runMain call accepts args only to the point of returning.
+func TestRunMain(t *testing.T) {
+	// runMain's validation only runs on Linux; lmount is Linux-only and
+	// linuxOnlyError() would otherwise short-circuit every branch.
+	oldGOOS := goos
+	goos = "linux"
+	defer func() { goos = oldGOOS }()
+
+	tests := []struct {
+		name string
+		args []string
+		code int
+		want string
+	}{
+		{"help short", []string{"-h"}, 0, "Usage:"},
+		{"help long", []string{"--help"}, 0, "Usage:"},
+		{"no operation shows usage", []string{}, 1, "Usage:"},
+		{"unknown flag", []string{"-bogus"}, 1, "flag provided but not defined"},
+		{"two operations", []string{"-s", "/dev/x", "-u", "/dev/x"}, 1, "only one of"},
+		{"mount without source", []string{"-m", "/mnt"}, 1, "only valid with -s/--source"},
+		{"size without create", []string{"-cs", "100M"}, 1, "only valid with -c/--create"},
+		{"create-key-file without create", []string{"-ck", "/key"}, 1, "only valid with -c/--create"},
+		{"key-size without create", []string{"-cks", "1024"}, 1, "only valid with -c/--create"},
+		{"key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "-cks", "1024"}, 1, "only valid with -ck"},
+		{"expand-size without expand", []string{"-xs", "1G"}, 1, "only valid with -x/--expand"},
+		{"expand without size", []string{"-x", "/tmp/x.img"}, 1, "required with -x/--expand"},
+		{"create key conflicts", []string{"-c", "img", "-cs", "32M", "-k", "/k", "-ck", "/k2"}, 1, "cannot be used together"},
+		{"umount with key rejected", []string{"-u", "/dev/x", "-k", "/k"}, 1, "not valid with -u/--umount"},
+		// These reach expand/umount but fail on the missing path before any
+		// privileged probe or command runs.
+		{"expand missing container", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G"}, 1, "stat /nonexistent/lmount-test.img"},
+		{"umount missing source", []string{"-u", "/nonexistent/lmount-test.img"}, 1, "does not exist"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := captureStderr(t, func() {
+				code := runMain(tc.args)
+				if code != tc.code {
+					t.Errorf("runMain(%v) = %d, want %d", tc.args, code, tc.code)
+				}
+			})
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("runMain(%v) stderr missing %q, got %q", tc.args, tc.want, got)
+			}
+		})
+	}
+}
+
 func TestUsageContainsCreateFlags(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {

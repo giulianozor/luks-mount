@@ -18,20 +18,6 @@ func linuxOnlyError() error {
 	return fmt.Errorf("lmount is Linux-only (requires cryptsetup, mount, findmnt, and /dev/mapper); unsupported OS: %s", goos)
 }
 
-// fatal reports err on stderr and exits with status 1. It is the single
-// error-reporting path for flag/argument validation and operation failures.
-func fatal(err error) {
-	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-	os.Exit(1)
-}
-
-// fatalMsg reports a formatted validation message on stderr and exits with
-// status 1, matching fatal for plain-text flag-validation errors.
-func fatalMsg(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "Error: %s\n", fmt.Sprintf(format, args...))
-	os.Exit(1)
-}
-
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: lmount [flags] -s <source>\n\n")
 	fmt.Fprintf(os.Stderr, "Mount a device or file (auto-detects LUKS encryption):\n")
@@ -57,39 +43,63 @@ func usage() {
 }
 
 func main() {
-	keyFile := flag.String("k", "", "Path to key file")
-	keyFileLong := flag.String("key", "", "Path to key file")
-	mountPoint := flag.String("m", "", "Mount point (default: ~/<source basename>)")
-	mountPointLong := flag.String("mount", "", "Mount point (default: ~/<source basename>)")
-	umount := flag.String("u", "", "Source to unmount and close")
-	umountLong := flag.String("umount", "", "Source to unmount and close")
-	sourceFlag := flag.String("s", "", "Source device or file")
-	sourceFlagLong := flag.String("source", "", "Source device or file")
-	createFlag := flag.String("c", "", "Create a LUKS container")
-	createFlagLong := flag.String("create", "", "Create a LUKS container")
-	sizeFlag := flag.String("cs", "", "Container size with suffix M or G")
-	sizeFlagLong := flag.String("size", "", "Container size with suffix M or G")
-	createKeyFile := flag.String("ck", "", "Path for the LUKS key file to create")
-	createKeyFileLong := flag.String("create-key-file", "", "Path for the LUKS key file to create")
-	createKeySize := flag.Int("cks", 512, "Key file size in bytes")
-	createKeySizeLong := flag.Int("key-size", 512, "Key file size in bytes")
-	expandFlag := flag.String("x", "", "Expand a LUKS container file")
-	expandFlagLong := flag.String("expand", "", "Expand a LUKS container file")
-	expandSizeFlag := flag.String("xs", "", "Expand size with suffix M or G")
-	expandSizeFlagLong := flag.String("expand-size", "", "Expand size with suffix M or G")
-	help := flag.Bool("h", false, "Show help")
-	helpLong := flag.Bool("help", false, "Show help")
+	os.Exit(runMain(os.Args[1:]))
+}
 
-	flag.Usage = usage
-	flag.Parse()
+// fail prints err in the same "Error: ..." form the CLI always uses and
+// reports the failure exit status to runMain's caller.
+func fail(err error) int {
+	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	return 1
+}
+
+// failMsg is fail for formatted plain-text validation messages, so the
+// flag-validation failures use the same "Error: ..." prefix as everything else.
+func failMsg(format string, args ...any) int {
+	fmt.Fprintf(os.Stderr, "Error: %s\n", fmt.Sprintf(format, args...))
+	return 1
+}
+
+// runMain parses args (the invocation arguments after the program name) on a
+// fresh flag set and returns the process exit status, so the whole CLI surface
+// is testable without a subprocess.
+func runMain(args []string) int {
+	fs := flag.NewFlagSet("lmount", flag.ContinueOnError)
+	keyFile := fs.String("k", "", "Path to key file")
+	keyFileLong := fs.String("key", "", "Path to key file")
+	mountPoint := fs.String("m", "", "Mount point (default: ~/<source basename>)")
+	mountPointLong := fs.String("mount", "", "Mount point (default: ~/<source basename>)")
+	umount := fs.String("u", "", "Source to unmount and close")
+	umountLong := fs.String("umount", "", "Source to unmount and close")
+	sourceFlag := fs.String("s", "", "Source device or file")
+	sourceFlagLong := fs.String("source", "", "Source device or file")
+	createFlag := fs.String("c", "", "Create a LUKS container")
+	createFlagLong := fs.String("create", "", "Create a LUKS container")
+	sizeFlag := fs.String("cs", "", "Container size with suffix M or G")
+	sizeFlagLong := fs.String("size", "", "Container size with suffix M or G")
+	createKeyFile := fs.String("ck", "", "Path for the LUKS key file to create")
+	createKeyFileLong := fs.String("create-key-file", "", "Path for the LUKS key file to create")
+	createKeySize := fs.Int("cks", 512, "Key file size in bytes")
+	createKeySizeLong := fs.Int("key-size", 512, "Key file size in bytes")
+	expandFlag := fs.String("x", "", "Expand a LUKS container file")
+	expandFlagLong := fs.String("expand", "", "Expand a LUKS container file")
+	expandSizeFlag := fs.String("xs", "", "Expand size with suffix M or G")
+	expandSizeFlagLong := fs.String("expand-size", "", "Expand size with suffix M or G")
+	help := fs.Bool("h", false, "Show help")
+	helpLong := fs.Bool("help", false, "Show help")
+
+	fs.Usage = usage
+	if err := fs.Parse(args); err != nil {
+		return 1
+	}
 
 	if *help || *helpLong {
 		usage()
-		os.Exit(0)
+		return 0
 	}
 
 	if err := linuxOnlyError(); err != nil {
-		fatal(err)
+		return fail(err)
 	}
 
 	expandVal := trimTrailingSeparators(firstNonEmpty(*expandFlag, *expandFlagLong))
@@ -114,11 +124,11 @@ func main() {
 		ops++
 	}
 	if ops > 1 {
-		fatalMsg("only one of -s/--source, -u/--umount, -c/--create, -x/--expand may be used")
+		return failMsg("only one of -s/--source, -u/--umount, -c/--create, -x/--expand may be used")
 	}
 
 	if (*mountPoint != "" || *mountPointLong != "") && !mountPresent {
-		fatalMsg("-m/--mount is only valid with -s/--source")
+		return failMsg("-m/--mount is only valid with -s/--source")
 	}
 
 	*keyFile = firstNonEmpty(*keyFile, *keyFileLong)
@@ -130,7 +140,7 @@ func main() {
 	keyFileVal := firstNonEmpty(*createKeyFile, *createKeyFileLong)
 	shortKeySizeSet := false
 	longKeySizeSet := false
-	flag.Visit(func(f *flag.Flag) {
+	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "cks":
 			shortKeySizeSet = true
@@ -141,49 +151,49 @@ func main() {
 	keySizeVal, keySizeSet := resolveKeySize(shortKeySizeSet, *createKeySize, longKeySizeSet, *createKeySizeLong, 512)
 
 	if sizeVal != "" && createVal == "" {
-		fatalMsg("-cs/--size is only valid with -c/--create")
+		return failMsg("-cs/--size is only valid with -c/--create")
 	}
 	if keyFileVal != "" && createVal == "" {
-		fatalMsg("-ck/--create-key-file is only valid with -c/--create")
+		return failMsg("-ck/--create-key-file is only valid with -c/--create")
 	}
 	if keySizeSet && createVal == "" {
-		fatalMsg("-cks/--key-size is only valid with -c/--create")
+		return failMsg("-cks/--key-size is only valid with -c/--create")
 	}
 	if keySizeSet && keyFileVal == "" {
-		fatalMsg("-cks/--key-size is only valid with -ck/--create-key-file")
+		return failMsg("-cks/--key-size is only valid with -ck/--create-key-file")
 	}
 
 	if expandSizeVal != "" && expandVal == "" {
-		fatalMsg("-xs/--expand-size is only valid with -x/--expand")
+		return failMsg("-xs/--expand-size is only valid with -x/--expand")
 	}
 
 	if expandVal != "" {
 		if expandSizeVal == "" {
-			fatalMsg("-xs/--expand-size is required with -x/--expand")
+			return failMsg("-xs/--expand-size is required with -x/--expand")
 		}
-		if len(flag.Args()) > 0 {
-			fatalMsg("unexpected positional argument(s): %s", strings.Join(flag.Args(), " "))
+		if len(fs.Args()) > 0 {
+			failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
 		}
 		if err := expandContainer(runCmd, runDirect, expandVal, expandSizeVal, *keyFile); err != nil {
-			fatal(err)
+			return fail(err)
 		}
-		return
+		return 0
 	}
 
 	if createVal != "" {
 		if sizeVal == "" {
-			fatalMsg("-cs/--size is required with -c/--create")
+			return failMsg("-cs/--size is required with -c/--create")
 		}
-		if len(flag.Args()) > 0 {
-			fatalMsg("unexpected positional argument(s): %s", strings.Join(flag.Args(), " "))
+		if len(fs.Args()) > 0 {
+			failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
 		}
 		if keyFileVal != "" && *keyFile != "" {
-			fatalMsg("-ck/--create-key-file and -k/--key cannot be used together")
+			return failMsg("-ck/--create-key-file and -k/--key cannot be used together")
 		}
 		if err := createContainer(runCmd, runDirect, createVal, sizeVal, *keyFile, keyFileVal, keySizeVal); err != nil {
-			fatal(err)
+			return fail(err)
 		}
-		return
+		return 0
 	}
 
 	source := trimTrailingSeparators(firstNonEmpty(*sourceFlag, *sourceFlagLong))
@@ -193,26 +203,27 @@ func main() {
 	}
 	if source == "" {
 		usage()
-		os.Exit(1)
+		return 1
 	}
-	if len(flag.Args()) > 0 {
-		fatalMsg("unexpected positional argument(s): %s", strings.Join(flag.Args(), " "))
+	if len(fs.Args()) > 0 {
+		failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
 	}
 
 	if umountVal != "" {
 		if *keyFile != "" {
-			fatalMsg("-k/--key is not valid with -u/--umount (closing a LUKS mapping needs no key)")
+			return failMsg("-k/--key is not valid with -u/--umount (closing a LUKS mapping needs no key)")
 		}
 		// -m/--mount is rejected earlier ("only valid with -s/--source"); the
 		// umount mount point is always discovered from the running mount.
 		if err := umountAndClose(checkMapped, runCmd, runOutputDirect, source); err != nil {
-			fatal(err)
+			return fail(err)
 		}
-		return
+		return 0
 	}
 
 	fullSrc := resolveSource(source)
 	if err := openAndMount(runCmd, runOutput, fullSrc, *keyFile, *mountPoint); err != nil {
-		fatal(err)
+		return fail(err)
 	}
+	return 0
 }
