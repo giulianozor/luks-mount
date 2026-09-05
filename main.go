@@ -25,7 +25,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "  -c, --create <name>    Create a LUKS container\n")
 	fmt.Fprintf(os.Stderr, "  -cs, --size <size>     Container size with suffix M or G (e.g. 100M, 2G)\n")
 	fmt.Fprintf(os.Stderr, "  -ck, --create-key-file <path>  Path for the LUKS key file to create\n")
-	fmt.Fprintf(os.Stderr, "  -cks, --key-size <n>   Key file size in bytes (default: 512)\n")
+	fmt.Fprintf(os.Stderr, "  -cks, --key-size <n>   Key file size in bytes (default: 512; only with -ck)\n")
 	fmt.Fprintf(os.Stderr, "  -x, --expand <file>    Expand a LUKS container file\n")
 	fmt.Fprintf(os.Stderr, "  -xs, --expand-size <size>  Expand size with suffix M or G (e.g. 100M, 2G)\n")
 	fmt.Fprintf(os.Stderr, "  -k, --key <file>       Path to key file\n")
