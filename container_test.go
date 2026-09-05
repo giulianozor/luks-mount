@@ -867,6 +867,27 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a key file that is the container itself before growing", func(t *testing.T) {
+		var runs []cmdCall
+		run := func(name string, args ...string) error {
+			runs = append(runs, cmdCall{name, args})
+			return nil
+		}
+
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		err := expandContainer(run, run, f, "256M", f)
+		if err == nil || !strings.Contains(err.Error(), "must be different") {
+			t.Errorf("expected a key/container collision error, got %v", err)
+		}
+		for _, r := range runs {
+			if r.name == "truncate" {
+				t.Errorf("truncate must not run for a colliding key file, got %v", runs)
+			}
+		}
+	})
+
 	t.Run("normalizes a trailing slash on the container file", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")

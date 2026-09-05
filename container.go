@@ -284,6 +284,14 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("container %s is mounted as /dev/mapper/%s; unmount it before expanding", filename, srcName(filename))
 	}
 
+	// The key file and the container are separate objects; passing the
+	// container itself as the key would make cryptsetup read a LUKS header as
+	// a key and fail cryptically. Compare canonical paths so a relative or
+	// symlinked spelling of the same file is caught too.
+	if keyFile != "" && sameFilePath(keyFile, filename) {
+		return fmt.Errorf("key file path and container path must be different, both are %q", filepath.Clean(filename))
+	}
+
 	if keyFile != "" {
 		if err := checkKeyFile(keyFile, "key file"); err != nil {
 			return err
