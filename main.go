@@ -18,7 +18,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "Unmount and close:\n")
 	fmt.Fprintf(os.Stderr, "  lmount -u <source>\n\n")
 	fmt.Fprintf(os.Stderr, "Create a LUKS container:\n")
-	fmt.Fprintf(os.Stderr, "  lmount -c <name> -cs <size> [-ck <keyfile>] [-cks <key-size>]\n\n")
+	fmt.Fprintf(os.Stderr, "  lmount -c <name> -cs <size> [-ck <keyfile>] [-k <keyfile>] [-cks <key-size>]\n\n")
 	fmt.Fprintf(os.Stderr, "Expand a LUKS container:\n")
 	fmt.Fprintf(os.Stderr, "  lmount -x <filename> -xs <size> [-k <keyfile>]\n\n")
 	fmt.Fprintf(os.Stderr, "Flags:\n")
