@@ -444,3 +444,73 @@ func TestUsageDocumentsKeySizeRequiresCreateKeyFile(t *testing.T) {
 	}
 	t.Error("usage output does not document -cks/--key-size at all")
 }
+
+func TestRunMainStreamRouting(t *testing.T) {
+	oldGOOS := goos
+	goos = "linux"
+	defer func() { goos = oldGOOS }()
+
+	captureBoth := func(fn func()) (string, string) {
+		t.Helper()
+		rOut, wOut, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		rErr, wErr, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldOut, oldErr := os.Stdout, os.Stderr
+		os.Stdout, os.Stderr = wOut, wErr
+		defer func() { os.Stdout, os.Stderr = oldOut, oldErr }()
+		fn()
+		wOut.Close()
+		wErr.Close()
+		var so, se bytes.Buffer
+		so.ReadFrom(rOut)
+		se.ReadFrom(rErr)
+		return so.String(), se.String()
+	}
+
+	t.Run("help goes to stdout only", func(t *testing.T) {
+		stdout, stderr := captureBoth(func() {
+			if code := runMain([]string{"-h"}); code != 0 {
+				t.Errorf("runMain(-h) = %d, want 0", code)
+			}
+		})
+		if !strings.Contains(stdout, "Usage:") {
+			t.Errorf("help usage not on stdout, got %q", stdout)
+		}
+		if stderr != "" {
+			t.Errorf("help must not touch stderr, got %q", stderr)
+		}
+	})
+
+	t.Run("no arguments shows usage on stderr only", func(t *testing.T) {
+		stdout, stderr := captureBoth(func() {
+			if code := runMain([]string{}); code != 1 {
+				t.Errorf("runMain() = %d, want 1", code)
+			}
+		})
+		if stdout != "" {
+			t.Errorf("no-args usage must not touch stdout, got %q", stdout)
+		}
+		if !strings.Contains(stderr, "Usage:") {
+			t.Errorf("no-args usage not on stderr, got %q", stderr)
+		}
+	})
+
+	t.Run("flag errors go to stderr only", func(t *testing.T) {
+		stdout, stderr := captureBoth(func() {
+			if code := runMain([]string{"-bogus"}); code != 1 {
+				t.Errorf("runMain(-bogus) = %d, want 1", code)
+			}
+		})
+		if stdout != "" {
+			t.Errorf("flag error must not touch stdout, got %q", stdout)
+		}
+		if !strings.Contains(stderr, "flag provided but not defined") {
+			t.Errorf("flag error not on stderr, got %q", stderr)
+		}
+	})
+}
