@@ -11,6 +11,13 @@ import (
 // goos is the runtime operating system name; overridable for testing.
 var goos = runtime.GOOS
 
+func linuxOnlyError() error {
+	if goos == "linux" {
+		return nil
+	}
+	return fmt.Errorf("lmount is Linux-only (requires cryptsetup, mount, findmnt, and /dev/mapper); unsupported OS: %s", goos)
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: lmount [flags] -s <source>\n\n")
 	fmt.Fprintf(os.Stderr, "Mount a device or file (auto-detects LUKS encryption):\n")
@@ -67,8 +74,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	if goos != "linux" {
-		fmt.Fprintf(os.Stderr, "Error: lmount is Linux-only (requires cryptsetup, mount, findmnt, and /dev/mapper); unsupported OS: %s\n", goos)
+	if err := linuxOnlyError(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 

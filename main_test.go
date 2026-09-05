@@ -32,6 +32,25 @@ func TestUsage(t *testing.T) {
 	}
 }
 
+func TestLinuxOnlyError(t *testing.T) {
+	oldGOOS := goos
+	defer func() { goos = oldGOOS }()
+
+	goos = "linux"
+	if err := linuxOnlyError(); err != nil {
+		t.Errorf("linuxOnlyError() on linux = %v, want nil", err)
+	}
+
+	goos = "darwin"
+	err := linuxOnlyError()
+	if err == nil {
+		t.Fatal("linuxOnlyError() on darwin = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "Linux-only") || !strings.Contains(err.Error(), "darwin") {
+		t.Errorf("linuxOnlyError() should name the OS and Linux-only, got %v", err)
+	}
+}
+
 func TestUsageContainsCreateFlags(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {
