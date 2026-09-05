@@ -1326,6 +1326,9 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		if !strings.Contains(fmt.Sprintf("%v", err), "findmnt failed") {
 			t.Errorf("expected findmnt failure to be reported, got %v", err)
 		}
+		if !strings.Contains(fmt.Sprintf("%v", err), "/dev/__test_dev__") {
+			t.Errorf("expected the search spec in the findmnt error, got %v", err)
+		}
 		if umountCalls != 0 {
 			t.Errorf("expected no umount calls when findmnt fails, got %d", umountCalls)
 		}
@@ -1350,6 +1353,9 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		err := umountAndClose(checkMapped, runCmd, runOutputDirect, "/dev/__test_dev__")
 		if err == nil || !strings.Contains(fmt.Sprintf("%v", err), "findmnt failed") {
 			t.Errorf("expected a findmnt failure, got %v", err)
+		}
+		if !strings.Contains(fmt.Sprintf("%v", err), "/dev/mapper/__test_dev__") {
+			t.Errorf("expected the search spec in the findmnt error, got %v", err)
 		}
 		if closes != 0 {
 			t.Errorf("must not luksClose when the mount probe failed, got %d close(s)", closes)
