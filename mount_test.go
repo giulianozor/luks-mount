@@ -1879,3 +1879,22 @@ func TestOpenAndMountCurrentUserLookupFailure(t *testing.T) {
 		t.Errorf("expected a current-user warning, got %q", got)
 	}
 }
+
+func TestUmountAndCloseDevDirectorySource(t *testing.T) {
+	if _, err := os.Stat("/dev/fd"); err != nil {
+		t.Skip("/dev/fd is not a directory on this host")
+	}
+	seen := make(map[string]bool)
+	err := umountAndClose(
+		func(name string) bool { return false },
+		func(n string, a ...string) error { seen[n] = true; return nil },
+		func(n string, a ...string) ([]byte, error) { seen[n] = true; return nil, nil },
+		"/dev/fd",
+	)
+	if err == nil || !strings.Contains(err.Error(), "is a directory") {
+		t.Errorf("expected a directory rejection for /dev/fd, got %v", err)
+	}
+	if len(seen) != 0 {
+		t.Errorf("expected no findmnt/unmount calls, saw %v", seen)
+	}
+}

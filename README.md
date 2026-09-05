@@ -81,7 +81,7 @@ Encryption is auto-detected by reading the LUKS header magic directly when the s
 lmount -u <source>
 ```
 
-Unmounts all mount points backed by the source (or `/dev/mapper/<source>` for LUKS), removes the now-empty mount directories (non-empty ones are kept, with a note), and closes the LUKS mapping if present.
+Unmounts all mount points backed by the source (or `/dev/mapper/<source>` for LUKS), removes the now-empty mount directories (non-empty ones are kept, with a note), and closes the LUKS mapping if present. An open LUKS mapping is checked before the backing path, so `lmount -u` still detaches and closes the mapping even if the backing file was deleted.
 
 ### Create
 
