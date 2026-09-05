@@ -130,11 +130,11 @@ func TestRemoveIfEmpty(t *testing.T) {
 
 func TestResolveKeySize(t *testing.T) {
 	tests := []struct {
-		name            string
+		name              string
 		shortSet, longSet bool
 		shortVal, longVal int
-		want             int
-		wantSet          bool
+		want              int
+		wantSet           bool
 	}{
 		{"neither set", false, false, 128, 256, 512, false},
 		{"short only", true, false, 128, 256, 128, true},
