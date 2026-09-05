@@ -61,7 +61,12 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	if keyFile != "" {
-		if _, err := os.Stat(keyFile); err == nil {
+		if fi, err := os.Stat(keyFile); err == nil {
+			if fi.IsDir() {
+				// A directory path can never become a key file; say so rather
+				// than the misleading "already exists".
+				return fmt.Errorf("key file %q is a directory", keyFile)
+			}
 			return fmt.Errorf("key file %q already exists", keyFile)
 		}
 		if keySize <= 0 {

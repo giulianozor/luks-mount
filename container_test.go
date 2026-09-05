@@ -381,6 +381,20 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("key file path that is a directory is reported as such", func(t *testing.T) {
+		run := func(name string, args ...string) error { return nil }
+		dir := t.TempDir()
+		img := filepath.Join(dir, "container.img")
+		dirKey := filepath.Join(dir, "keydir")
+		if err := os.MkdirAll(dirKey, 0755); err != nil {
+			t.Fatal(err)
+		}
+		err := createContainer(run, run, img, "256M", "", dirKey, 512)
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("expected a directory-key-file error, got %v", err)
+		}
+	})
+
 	t.Run("existing key file must exist", func(t *testing.T) {
 		var ranCryptsetup bool
 		run := func(name string, args ...string) error {
