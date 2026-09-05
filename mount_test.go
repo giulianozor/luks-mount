@@ -911,6 +911,24 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a missing bare source name instead of a cryptic findmnt failure", func(t *testing.T) {
+		var runs []cmdCall
+		runCmd := func(name string, args ...string) error {
+			runs = append(runs, cmdCall{name, args})
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+		checkMapped := func(name string) bool { return false }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, "definitely-not-a-device")
+		if err == nil || !strings.Contains(err.Error(), "does not exist") {
+			t.Errorf("expected a does-not-exist error, got %v", err)
+		}
+		if len(runs) != 0 {
+			t.Errorf("no commands should run for a missing source, got %v", runs)
+		}
+	})
+
 	t.Run("normalizes a trailing slash on the source before probing", func(t *testing.T) {
 		dir := t.TempDir()
 		src := filepath.Join(dir, "plain.img")

@@ -292,8 +292,17 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	if !strings.HasPrefix(source, "/dev/") && source != "" {
 		fi, err := os.Stat(source)
 		if err != nil {
-			if os.IsNotExist(err) && !encrypted && strings.Contains(source, "/") {
-				return fmt.Errorf("source %s does not exist", source)
+			if os.IsNotExist(err) && !encrypted {
+				// A bare name (no "/") may still name an existing /dev/
+				// device, e.g. "-u sda1"; resolveSource maps those below. Any
+				// other missing source can never be unmounted or detached, so
+				// reject it before a cryptic findmnt probe.
+				if strings.Contains(source, "/") {
+					return fmt.Errorf("source %s does not exist", source)
+				}
+				if _, devErr := os.Stat("/dev/" + source); devErr != nil {
+					return fmt.Errorf("source %s does not exist", source)
+				}
 			}
 		} else if fi.IsDir() {
 			return fmt.Errorf("source %s is a directory, not a device or file", source)
