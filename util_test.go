@@ -284,6 +284,22 @@ func TestRemoveIfEmpty(t *testing.T) {
 			t.Fatalf("unexpected error for missing mount point: %v", err)
 		}
 	})
+
+	t.Run("surfaces a read error on the mount point", func(t *testing.T) {
+		dir := t.TempDir()
+		locked := filepath.Join(dir, "locked")
+		if err := os.MkdirAll(locked, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(locked, 0000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(locked, 0755) })
+
+		if err := removeIfEmpty(locked); err == nil {
+			t.Error("expected a read error from a permission-locked mount point")
+		}
+	})
 }
 
 func TestTrimTrailingSeparators(t *testing.T) {

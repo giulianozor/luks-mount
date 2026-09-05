@@ -282,6 +282,26 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("mountpoint creation failure is surfaced", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		dir := t.TempDir()
+		locked := filepath.Join(dir, "locked")
+		if err := os.MkdirAll(locked, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(locked, 0500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(locked, 0755) })
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", filepath.Join(locked, "child"))
+		if err == nil || !strings.Contains(err.Error(), "creating mountpoint") {
+			t.Errorf("expected a creating-mountpoint error, got %v", err)
+		}
+	})
+
 	t.Run("mountpoint path exists as file", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error { return nil }
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
