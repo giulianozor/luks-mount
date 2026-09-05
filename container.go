@@ -7,6 +7,10 @@ import (
 	"path/filepath"
 )
 
+// chmod is a seam for tests to force a key-file permission failure; replacing
+// it in a test must restore the original (see the sharing note on userHomeDir).
+var chmod = os.Chmod
+
 // checkParentDir verifies that the directory holding path exists and is
 // actually a directory, so a later write (e.g. dd) fails with a clear message
 // instead of a cryptic "No such file or directory".
@@ -167,7 +171,7 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		}
 		// dd creates the file with the default umask (typically world-readable);
 		// this is a decryption key, so restrict it to the owner.
-		if err := os.Chmod(keyFile, 0600); err != nil {
+		if err := chmod(keyFile, 0600); err != nil {
 			return fmt.Errorf("setting key file permissions: %w", err)
 		}
 	}

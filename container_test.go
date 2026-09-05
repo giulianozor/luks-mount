@@ -2045,3 +2045,35 @@ func TestCreateContainerRejectsAlreadyOpenMapping(t *testing.T) {
 		t.Errorf("no command should run when the mapping name is taken, saw %d", runs)
 	}
 }
+
+func TestCreateContainerKeyFileChmodFailure(t *testing.T) {
+	dir := t.TempDir()
+	img := filepath.Join(dir, "container.img")
+
+	run := func(name string, args ...string) error {
+		if name == "dd" {
+			// simulate the dd payload landing on disk for both the key file
+			// (if=/dev/urandom) and the container (if=/dev/zero)
+			for _, a := range args {
+				if strings.HasPrefix(a, "of=") {
+					target := strings.TrimPrefix(a, "of=")
+					os.Remove(target)
+					return os.WriteFile(target, make([]byte, 512), 0644)
+				}
+			}
+			t.Fatal("dd args did not include an of= target")
+		}
+		return nil
+	}
+
+	origChmod := chmod
+	chmod = func(name string, mode os.FileMode) error {
+		return fmt.Errorf("permission denied")
+	}
+	t.Cleanup(func() { chmod = origChmod })
+
+	err := createContainer(run, run, img, "256M", "", filepath.Join(dir, "key.bin"), 512)
+	if err == nil || !strings.Contains(err.Error(), "setting key file permissions") {
+		t.Fatalf("expected a key file permission error, got %v", err)
+	}
+}
