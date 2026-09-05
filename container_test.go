@@ -328,6 +328,22 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects an empty container name", func(t *testing.T) {
+		var runs []cmdCall
+		run := func(name string, args ...string) error {
+			runs = append(runs, cmdCall{name, args})
+			return nil
+		}
+
+		err := createContainer(run, run, "", "256M", "", "", 512)
+		if err == nil || !strings.Contains(err.Error(), "must not be empty") {
+			t.Errorf("expected an empty-name error, got %v", err)
+		}
+		if len(runs) != 0 {
+			t.Errorf("no commands should run for an empty container name, got %v", runs)
+		}
+	})
+
 	t.Run("container already exists", func(t *testing.T) {
 		run := func(name string, args ...string) error { return nil }
 		dir := t.TempDir()

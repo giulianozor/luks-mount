@@ -36,6 +36,13 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("key file path and existing key file cannot both be set")
 	}
 
+	// An empty name would pass checkMapperName below ("" is allowed for the
+	// unmount-only empty-source flow) and then have dd/luksFormat write to an
+	// empty target path. Reject it up front with a clear error.
+	if name == "" {
+		return fmt.Errorf("container name must not be empty")
+	}
+
 	const minSize = int64(32 * 1024 * 1024)
 	if total < minSize {
 		return fmt.Errorf("minimum container size is 32M, got %s", size)
