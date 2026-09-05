@@ -337,6 +337,28 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("directory existing key file is rejected", func(t *testing.T) {
+		var ranCryptsetup bool
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" {
+				ranCryptsetup = true
+			}
+			return nil
+		}
+		img := filepath.Join(t.TempDir(), "c.img")
+		dirKey := filepath.Join(t.TempDir(), "keydir")
+		if err := os.MkdirAll(dirKey, 0755); err != nil {
+			t.Fatal(err)
+		}
+		err := createContainer(run, run, img, "256M", dirKey, "", 512)
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("expected a directory-key-file error, got %v", err)
+		}
+		if ranCryptsetup {
+			t.Error("cryptsetup should not run when the existing key file is a directory")
+		}
+	})
+
 	t.Run("invalid size", func(t *testing.T) {
 		run := func(name string, args ...string) error { return nil }
 		err := createContainer(run, run, filepath.Join(t.TempDir(), "c.img"), "invalid", "", "", 512)
@@ -791,6 +813,30 @@ func TestExpandContainer(t *testing.T) {
 		}
 		if len(truncateArgs) != 0 {
 			t.Errorf("container should not be grown when the key file is missing, truncate: %v", truncateArgs)
+		}
+	})
+
+	t.Run("directory key file is rejected before growing", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var truncateArgs []string
+		run := func(name string, args ...string) error {
+			if name == "truncate" {
+				truncateArgs = append(truncateArgs, args...)
+			}
+			return nil
+		}
+		dirKey := filepath.Join(dir, "keydir")
+		if err := os.MkdirAll(dirKey, 0755); err != nil {
+			t.Fatal(err)
+		}
+		err := expandContainer(run, run, f, "256M", dirKey)
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("expected a directory-key-file error, got %v", err)
+		}
+		if len(truncateArgs) != 0 {
+			t.Errorf("container should not be grown when the key file is a directory, truncate: %v", truncateArgs)
 		}
 	})
 

@@ -93,6 +93,23 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
+// checkKeyFile verifies that path exists and is not a directory, so a LUKS key
+// (passphrase-less) fails with a clear message before any mapping is opened or
+// a container file is grown rather than with a cryptic cryptsetup error.
+func checkKeyFile(path, what string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%s %q does not exist", what, path)
+		}
+		return fmt.Errorf("checking %s %q: %w", what, path, err)
+	}
+	if fi.IsDir() {
+		return fmt.Errorf("%s %q is a directory", what, path)
+	}
+	return nil
+}
+
 func removeIfEmpty(path string) error {
 	if path == string(filepath.Separator) {
 		fmt.Printf("Skipping removal of filesystem root %s.\n", path)

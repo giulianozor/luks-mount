@@ -51,10 +51,10 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	}
 
 	if keyFile != "" && encrypted {
-		if _, err := os.Stat(keyFile); err != nil {
+		if err := checkKeyFile(keyFile, "key file"); err != nil {
 			// Fail fast with a clear message on a typo'd key, rather than after
 			// luksOpen returns a cryptic error (and before any mapping is opened).
-			return fmt.Errorf("key file %q does not exist", keyFile)
+			return err
 		}
 	}
 

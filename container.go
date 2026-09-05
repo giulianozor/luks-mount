@@ -74,8 +74,8 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	if existingKeyFile != "" {
-		if _, err := os.Stat(existingKeyFile); err != nil {
-			return fmt.Errorf("existing key file %q does not exist", existingKeyFile)
+		if err := checkKeyFile(existingKeyFile, "existing key file"); err != nil {
+			return err
 		}
 	}
 
@@ -239,8 +239,8 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	if keyFile != "" {
-		if _, err := os.Stat(keyFile); err != nil {
-			return fmt.Errorf("key file %q does not exist", keyFile)
+		if err := checkKeyFile(keyFile, "key file"); err != nil {
+			return err
 		}
 	}
 

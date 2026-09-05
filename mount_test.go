@@ -239,6 +239,29 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a directory key file for a LUKS source before opening", func(t *testing.T) {
+		var luksOpenCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		dirKey := filepath.Join(t.TempDir(), "keydir")
+		if err := os.MkdirAll(dirKey, 0755); err != nil {
+			t.Fatal(err)
+		}
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", dirKey, filepath.Join(t.TempDir(), "mnt"))
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("expected a directory-key-file error, got %v", err)
+		}
+		if luksOpenCalls != 0 {
+			t.Errorf("luksOpen should not be attempted with a directory key, got %d calls", luksOpenCalls)
+		}
+	})
+
 	t.Run("rejects a missing key file for a LUKS source before opening", func(t *testing.T) {
 		var luksOpenCalls int
 		runCmd := func(name string, args ...string) error {
