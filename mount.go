@@ -353,6 +353,10 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 			// cleanup identifies which mapping could not be detached.
 			errs = append(errs, fmt.Sprintf("luksClose %s: %v", name, err))
 		}
+	} else if encrypted {
+		// The umount errors already name their targets; add an explicit note so
+		// the still-open mapping is not lost among them.
+		errs = append(errs, fmt.Sprintf("LUKS mapping %s left open: a target is still mounted", name))
 	}
 
 	if len(errs) > 0 {

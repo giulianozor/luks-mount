@@ -1108,6 +1108,9 @@ func TestUmountAndClose_luks(t *testing.T) {
 		if calledClose {
 			t.Error("luksClose must NOT be called while a filesystem is still mounted")
 		}
+		if !strings.Contains(err.Error(), "left open") || !strings.Contains(err.Error(), "__test_dev__") {
+			t.Errorf("expected the error to name the mapping left open, got %v", err)
+		}
 	})
 
 	t.Run("rejects the filesystem root as a source", func(t *testing.T) {
