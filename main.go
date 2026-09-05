@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -18,28 +19,35 @@ func linuxOnlyError() error {
 	return fmt.Errorf("lmount is Linux-only (requires cryptsetup, mount, findmnt, and /dev/mapper); unsupported OS: %s", goos)
 }
 
+// usageTo prints the full command help to w. usage() is the stderr variant
+// shown on argument errors (and by the flag package on a parse failure); an
+// explicit -h/--help request routes to stdout via usageTo(os.Stdout).
+func usageTo(w io.Writer) {
+	fmt.Fprintf(w, "Usage: lmount [flags] -s <source>\n\n")
+	fmt.Fprintf(w, "Mount a device or file (auto-detects LUKS encryption):\n")
+	fmt.Fprintf(w, "  lmount -s <source> [-k <keyfile>] [-m <mountpoint>]\n\n")
+	fmt.Fprintf(w, "Unmount and close:\n")
+	fmt.Fprintf(w, "  lmount -u <source>\n\n")
+	fmt.Fprintf(w, "Create a LUKS container:\n")
+	fmt.Fprintf(w, "  lmount -c <name> -cs <size> [-ck <keyfile>] [-k <keyfile>] [-cks <key-size>]\n\n")
+	fmt.Fprintf(w, "Expand a LUKS container:\n")
+	fmt.Fprintf(w, "  lmount -x <filename> -xs <size> [-k <keyfile>]\n\n")
+	fmt.Fprintf(w, "Flags:\n")
+	fmt.Fprintf(w, "  %-27s %s\n", "-c, --create <name>", "Create a LUKS container")
+	fmt.Fprintf(w, "  %-27s %s\n", "-cs, --size <size>", "Container size with suffix M or G (e.g. 100M, 2G)")
+	fmt.Fprintf(w, "  %-27s %s\n", "-ck, --create-key-file <path>", "Path for the LUKS key file to create")
+	fmt.Fprintf(w, "  %-27s %s\n", "-cks, --key-size <n>", "Key file size in bytes (default: 512; only with -ck)")
+	fmt.Fprintf(w, "  %-27s %s\n", "-x, --expand <file>", "Expand a LUKS container file")
+	fmt.Fprintf(w, "  %-27s %s\n", "-xs, --expand-size <size>", "Expand size with suffix M or G (e.g. 100M, 2G)")
+	fmt.Fprintf(w, "  %-27s %s\n", "-k, --key <file>", "Path to key file")
+	fmt.Fprintf(w, "  %-27s %s\n", "-m, --mount <dir>", "Mount point (default: ~/<source basename>)")
+	fmt.Fprintf(w, "  %-27s %s\n", "-u, --umount <source>", "Source to unmount and close")
+	fmt.Fprintf(w, "  %-27s %s\n", "-s, --source <path>", "Source device or file")
+	fmt.Fprintf(w, "  %-27s %s\n", "-h, --help", "Show help")
+}
+
 func usage() {
-	fmt.Fprintf(os.Stderr, "Usage: lmount [flags] -s <source>\n\n")
-	fmt.Fprintf(os.Stderr, "Mount a device or file (auto-detects LUKS encryption):\n")
-	fmt.Fprintf(os.Stderr, "  lmount -s <source> [-k <keyfile>] [-m <mountpoint>]\n\n")
-	fmt.Fprintf(os.Stderr, "Unmount and close:\n")
-	fmt.Fprintf(os.Stderr, "  lmount -u <source>\n\n")
-	fmt.Fprintf(os.Stderr, "Create a LUKS container:\n")
-	fmt.Fprintf(os.Stderr, "  lmount -c <name> -cs <size> [-ck <keyfile>] [-k <keyfile>] [-cks <key-size>]\n\n")
-	fmt.Fprintf(os.Stderr, "Expand a LUKS container:\n")
-	fmt.Fprintf(os.Stderr, "  lmount -x <filename> -xs <size> [-k <keyfile>]\n\n")
-	fmt.Fprintf(os.Stderr, "Flags:\n")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-c, --create <name>", "Create a LUKS container")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-cs, --size <size>", "Container size with suffix M or G (e.g. 100M, 2G)")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-ck, --create-key-file <path>", "Path for the LUKS key file to create")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-cks, --key-size <n>", "Key file size in bytes (default: 512; only with -ck)")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-x, --expand <file>", "Expand a LUKS container file")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-xs, --expand-size <size>", "Expand size with suffix M or G (e.g. 100M, 2G)")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-k, --key <file>", "Path to key file")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-m, --mount <dir>", "Mount point (default: ~/<source basename>)")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-u, --umount <source>", "Source to unmount and close")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-s, --source <path>", "Source device or file")
-	fmt.Fprintf(os.Stderr, "  %-27s %s\n", "-h, --help", "Show help")
+	usageTo(os.Stderr)
 }
 
 func main() {
@@ -94,7 +102,9 @@ func runMain(args []string) int {
 	}
 
 	if *help || *helpLong {
-		usage()
+		// An explicit help request is not an error; print the usage to stdout
+		// (the flag package and argument errors keep using stderr).
+		usageTo(os.Stdout)
 		return 0
 	}
 

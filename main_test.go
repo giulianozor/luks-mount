@@ -55,13 +55,25 @@ func TestLinuxOnlyError(t *testing.T) {
 // stderr, restoring the original descriptor afterwards.
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
+	return captureFd(t, &os.Stderr, fn)
+}
+
+// captureStdout runs fn with os.Stdout redirected and returns what fn wrote to
+// stdout, restoring the original descriptor afterwards.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	return captureFd(t, &os.Stdout, fn)
+}
+
+func captureFd(t *testing.T, fd **os.File, fn func()) string {
+	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldStderr := os.Stderr
-	os.Stderr = w
-	defer func() { os.Stderr = oldStderr }()
+	old := *fd
+	*fd = w
+	defer func() { *fd = old }()
 	fn()
 	w.Close()
 	var buf bytes.Buffer
@@ -80,40 +92,45 @@ func TestRunMain(t *testing.T) {
 	defer func() { goos = oldGOOS }()
 
 	tests := []struct {
-		name string
-		args []string
-		code int
-		want string
+		name        string
+		args        []string
+		code        int
+		want        string
+		wantsStdout bool
 	}{
-		{"help short", []string{"-h"}, 0, "Usage:"},
-		{"help long", []string{"--help"}, 0, "Usage:"},
-		{"no operation shows usage", []string{}, 1, "Usage:"},
-		{"unknown flag", []string{"-bogus"}, 1, "flag provided but not defined"},
-		{"two operations", []string{"-s", "/dev/x", "-u", "/dev/x"}, 1, "only one of"},
-		{"mount without source", []string{"-m", "/mnt"}, 1, "only valid with -s/--source"},
-		{"size without create", []string{"-cs", "100M"}, 1, "only valid with -c/--create"},
-		{"create-key-file without create", []string{"-ck", "/key"}, 1, "only valid with -c/--create"},
-		{"key-size without create", []string{"-cks", "1024"}, 1, "only valid with -c/--create"},
-		{"key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "-cks", "1024"}, 1, "only valid with -ck"},
-		{"expand-size without expand", []string{"-xs", "1G"}, 1, "only valid with -x/--expand"},
-		{"expand without size", []string{"-x", "/tmp/x.img"}, 1, "required with -x/--expand"},
-		{"create key conflicts", []string{"-c", "img", "-cs", "32M", "-k", "/k", "-ck", "/k2"}, 1, "cannot be used together"},
-		{"umount with key rejected", []string{"-u", "/dev/x", "-k", "/k"}, 1, "not valid with -u/--umount"},
+		{"help short", []string{"-h"}, 0, "Usage:", true},
+		{"help long", []string{"--help"}, 0, "Usage:", true},
+		{"no operation shows usage", []string{}, 1, "Usage:", false},
+		{"unknown flag", []string{"-bogus"}, 1, "flag provided but not defined", false},
+		{"two operations", []string{"-s", "/dev/x", "-u", "/dev/x"}, 1, "only one of", false},
+		{"mount without source", []string{"-m", "/mnt"}, 1, "only valid with -s/--source", false},
+		{"size without create", []string{"-cs", "100M"}, 1, "only valid with -c/--create", false},
+		{"create-key-file without create", []string{"-ck", "/key"}, 1, "only valid with -c/--create", false},
+		{"key-size without create", []string{"-cks", "1024"}, 1, "only valid with -c/--create", false},
+		{"key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "-cks", "1024"}, 1, "only valid with -ck", false},
+		{"expand-size without expand", []string{"-xs", "1G"}, 1, "only valid with -x/--expand", false},
+		{"expand without size", []string{"-x", "/tmp/x.img"}, 1, "required with -x/--expand", false},
+		{"create key conflicts", []string{"-c", "img", "-cs", "32M", "-k", "/k", "-ck", "/k2"}, 1, "cannot be used together", false},
+		{"umount with key rejected", []string{"-u", "/dev/x", "-k", "/k"}, 1, "not valid with -u/--umount", false},
 		// These reach expand/umount but fail on the missing path before any
 		// privileged probe or command runs.
-		{"expand missing container", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G"}, 1, "stat /nonexistent/lmount-test.img"},
-		{"umount missing source", []string{"-u", "/nonexistent/lmount-test.img"}, 1, "does not exist"},
+		{"expand missing container", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G"}, 1, "stat /nonexistent/lmount-test.img", false},
+		{"umount missing source", []string{"-u", "/nonexistent/lmount-test.img"}, 1, "does not exist", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := captureStderr(t, func() {
+			capture := captureStderr
+			if tc.wantsStdout {
+				capture = captureStdout
+			}
+			got := capture(t, func() {
 				code := runMain(tc.args)
 				if code != tc.code {
 					t.Errorf("runMain(%v) = %d, want %d", tc.args, code, tc.code)
 				}
 			})
 			if !strings.Contains(got, tc.want) {
-				t.Errorf("runMain(%v) stderr missing %q, got %q", tc.args, tc.want, got)
+				t.Errorf("runMain(%v) output missing %q, got %q", tc.args, tc.want, got)
 			}
 		})
 	}
