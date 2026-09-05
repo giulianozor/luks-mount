@@ -170,6 +170,13 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 	mappedOpen = false
 
+	// Report the exact size written (mirroring expand's Old/New size line).
+	// If the file cannot be stat'd the container was just created above, so it
+	// is not worth failing the whole create over a diagnostics-only stat.
+	if fi, err := os.Stat(name); err == nil {
+		fmt.Printf("Created container %s (%d bytes).\n", name, fi.Size())
+	}
+
 	fmt.Println("Done.")
 	success = true
 	return nil

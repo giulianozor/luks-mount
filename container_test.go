@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -31,7 +32,6 @@ func TestCreateContainer(t *testing.T) {
 		if len(calls) != 5 {
 			t.Fatalf("expected 5 calls, got %d: %v", len(calls), calls)
 		}
-
 		if calls[0].name != "dd" {
 			t.Errorf("call 0: expected dd, got %s", calls[0].name)
 		}
@@ -50,6 +50,43 @@ func TestCreateContainer(t *testing.T) {
 		}
 		if calls[4].name != "cryptsetup" || len(calls[4].args) < 1 || calls[4].args[0] != "luksClose" {
 			t.Errorf("call 4: expected cryptsetup luksClose, got %v", calls[4])
+		}
+	})
+
+	t.Run("success reports the created container and its exact size", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "container.img")
+
+		run := func(name string, args ...string) error {
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
+				// simulate the container file being written to disk
+				return os.WriteFile(img, []byte("container"), 0644)
+			}
+			return nil
+		}
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldStdout := os.Stdout
+		os.Stdout = w
+		defer func() { os.Stdout = oldStdout }()
+
+		err = createContainer(run, run, img, "256M", "", "", 512)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		out := buf.String()
+
+		if !strings.Contains(out, "Created container "+img) {
+			t.Errorf("expected a created-container summary naming %q, got %q", img, out)
+		}
+		if !strings.Contains(out, "(9 bytes)") {
+			t.Errorf("expected the created-container summary to report the exact size, got %q", out)
 		}
 	})
 
