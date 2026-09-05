@@ -291,6 +291,27 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects both a generated and an existing key file", func(t *testing.T) {
+		var calls []cmdCall
+		run := func(name string, args ...string) error {
+			calls = append(calls, cmdCall{name, args})
+			return nil
+		}
+
+		img := filepath.Join(t.TempDir(), "container.img")
+		existing := filepath.Join(t.TempDir(), "existing.key")
+		if err := os.WriteFile(existing, []byte("key"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := createContainer(run, run, img, "256M", existing, filepath.Join(t.TempDir(), "new.key"), 512)
+		if err == nil || !strings.Contains(err.Error(), "cannot both be set") {
+			t.Errorf("expected a both-keys error, got %v", err)
+		}
+		if len(calls) != 0 {
+			t.Errorf("no commands should run with both keys set, got %v", calls)
+		}
+	})
+
 	t.Run("container already exists", func(t *testing.T) {
 		run := func(name string, args ...string) error { return nil }
 		dir := t.TempDir()

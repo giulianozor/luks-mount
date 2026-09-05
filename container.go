@@ -30,6 +30,12 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		return err
 	}
 
+	// main() already rejects the combination, but enforce it here too so a
+	// direct caller cannot silently prefer one key over the other.
+	if keyFile != "" && existingKeyFile != "" {
+		return fmt.Errorf("key file path and existing key file cannot both be set")
+	}
+
 	const minSize = int64(32 * 1024 * 1024)
 	if total < minSize {
 		return fmt.Errorf("minimum container size is 32M, got %s", size)
