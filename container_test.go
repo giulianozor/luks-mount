@@ -1995,3 +1995,33 @@ func TestCreateContainerBlockSize(t *testing.T) {
 		})
 	}
 }
+
+func TestWriteZerosTruncateFailure(t *testing.T) {
+	dir := t.TempDir()
+	of := filepath.Join(dir, "img")
+
+	var sawDD, sawTruncate bool
+	run := func(name string, args ...string) error {
+		switch name {
+		case "dd":
+			sawDD = true
+		case "truncate":
+			sawTruncate = true
+			return errors.New("truncate boom")
+		}
+		return nil
+	}
+
+	// 17MiB+1 byte is not a whole multiple of the 18MiB rounded block size, so
+	// the dd bulk write is followed by a truncate extension to the exact size.
+	err := writeZeros(run, of, 17*1024*1024+1)
+	if err == nil || !strings.Contains(err.Error(), "truncate boom") {
+		t.Fatalf("expected the truncate failure to surface, got %v", err)
+	}
+	if !sawDD {
+		t.Error("expected the bulk dd write to run before truncate")
+	}
+	if !sawTruncate {
+		t.Error("expected a truncate extension for the sub-block remainder")
+	}
+}

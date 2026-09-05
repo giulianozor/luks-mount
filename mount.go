@@ -11,6 +11,11 @@ import (
 
 var userHomeDir = os.UserHomeDir
 
+// currentUser is the user lookup used for the mount-point chown; a variable so
+// tests can simulate a lookup failure (e.g. a binary built from a source tree
+// with no passwd entry available).
+var currentUser = user.Current
+
 // mapperProbe reports whether a /dev/mapper/NAME mapping already exists; a
 // variable so tests can simulate an open mapping without touching /dev/mapper.
 // It shares the same stat-based probe umountAndClose uses (checkMapped).
@@ -255,7 +260,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	// invoking user so files written there are owned by them. This is also why
 	// the chown entry in the sudoers example is flagged as optional.
 	if createdMountpoint {
-		current, err := user.Current()
+		current, err := currentUser()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: cannot determine current user: %v\n", err)
 		} else {

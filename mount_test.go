@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -1847,4 +1848,34 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestOpenAndMountCurrentUserLookupFailure(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "plain.img")
+	if err := os.WriteFile(src, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mp := filepath.Join(dir, "mnt")
+
+	oldCur := currentUser
+	currentUser = func() (*user.User, error) {
+		return nil, errors.New("no passwd entry for uid")
+	}
+	defer func() { currentUser = oldCur }()
+
+	got := captureStderr(t, func() {
+		err := openAndMount(
+			func(n string, a ...string) error { return nil },
+			func(n string, a ...string) ([]byte, error) { return nil, errors.New("unexpected probe") },
+			src, "", mp,
+		)
+		if err != nil {
+			t.Fatalf("openAndMount unexpected error: %v", err)
+		}
+	})
+	if !strings.Contains(got, "Warning: cannot determine current user") ||
+		!strings.Contains(got, "no passwd entry") {
+		t.Errorf("expected a current-user warning, got %q", got)
+	}
 }
