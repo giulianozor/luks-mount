@@ -109,6 +109,35 @@ func TestSameFilePath(t *testing.T) {
 	}
 }
 
+func TestCalcBlockSize(t *testing.T) {
+	miB := int64(1024 * 1024)
+	giB := int64(1024 * 1024 * 1024)
+	tests := []struct {
+		name  string
+		total int64
+		want  int64
+	}{
+		{"under 1M is clamped to 1M", 1*miB - 1, 1 * miB},
+		{"small tier uses whole MiB up to 32", 1 * miB, 1 * miB},
+		{"small tier with remainder", 33 * miB, 32 * miB},
+		{"small tier caps at 32M", 999 * miB, 32 * miB},
+		{"1G stays in the small tier", 1 * giB, 32 * miB},
+		{"just over 1G moves to 256M", 1*giB + 1, 256 * miB},
+		{"10G stays at 256M", 10 * giB, 256 * miB},
+		{"just over 10G moves to 512M", 10*giB + 1, 512 * miB},
+		{"100G stays at 512M", 100 * giB, 512 * miB},
+		{"just over 100G moves to 1024M", 100*giB + 1, 1024 * miB},
+		{"large sizes use the 1G tier", 5 * 100 * giB, 1024 * miB},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := calcBlockSize(tt.total); got != tt.want {
+				t.Errorf("calcBlockSize(%d) = %d, want %d", tt.total, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRemoveIfEmpty(t *testing.T) {
 	t.Run("never removes filesystem root", func(t *testing.T) {
 		err := removeIfEmpty(string(filepath.Separator))
