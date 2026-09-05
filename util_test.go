@@ -136,6 +136,16 @@ func TestResolveSource(t *testing.T) {
 			t.Errorf("got %q, want %q", fp, "nonexistent")
 		}
 	})
+
+	t.Run("bare name resolves into /dev when it exists there", func(t *testing.T) {
+		if _, err := os.Stat("/dev/fd"); err != nil {
+			t.Skip("no /dev/fd entry to exercise the /dev fallback")
+		}
+		fp := resolveSource("fd")
+		if fp != "/dev/fd" {
+			t.Errorf("got %q, want %q", fp, "/dev/fd")
+		}
+	})
 }
 
 func TestExpandHome(t *testing.T) {
