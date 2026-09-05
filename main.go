@@ -72,10 +72,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	expandVal := strings.TrimRight(firstNonEmpty(*expandFlag, *expandFlagLong), "/")
+	expandVal := trimTrailingSeparators(firstNonEmpty(*expandFlag, *expandFlagLong))
 	expandSizeVal := firstNonEmpty(*expandSizeFlag, *expandSizeFlagLong)
 
-	createVal := strings.TrimRight(firstNonEmpty(*createFlag, *createFlagLong), "/")
+	createVal := trimTrailingSeparators(firstNonEmpty(*createFlag, *createFlagLong))
 	createPresent := createVal != ""
 	umountPresent := firstNonEmpty(*umount, *umountLong) != ""
 	mountPresent := firstNonEmpty(*sourceFlag, *sourceFlagLong) != ""
@@ -177,8 +177,8 @@ func main() {
 		return
 	}
 
-	source := strings.TrimRight(firstNonEmpty(*sourceFlag, *sourceFlagLong), "/")
-	umountVal := strings.TrimRight(firstNonEmpty(*umount, *umountLong), "/")
+	source := trimTrailingSeparators(firstNonEmpty(*sourceFlag, *sourceFlagLong))
+	umountVal := trimTrailingSeparators(firstNonEmpty(*umount, *umountLong))
 	if umountVal != "" {
 		source = umountVal
 	}

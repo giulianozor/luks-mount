@@ -70,6 +70,18 @@ func srcName(path string) string {
 	return filepath.Base(path)
 }
 
+// trimTrailingSeparators removes trailing path separators from s so an
+// argument like "dir/name/" is accepted wherever "dir/name" is. A root path
+// ("/") is preserved: trimming it to "" would silently turn an explicit
+// argument into an empty one.
+func trimTrailingSeparators(s string) string {
+	t := strings.TrimRight(s, "/")
+	if t == "" {
+		return s
+	}
+	return t
+}
+
 func resolveSource(raw string) string {
 	if raw == "" {
 		return ""

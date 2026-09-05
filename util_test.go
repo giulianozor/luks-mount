@@ -128,6 +128,26 @@ func TestRemoveIfEmpty(t *testing.T) {
 	})
 }
 
+func TestTrimTrailingSeparators(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"a.img", "a.img"},
+		{"a.img/", "a.img"},
+		{"dir/a.img//", "dir/a.img"},
+		{"/", "/"},
+		{"//", "//"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := trimTrailingSeparators(tt.input)
+		if got != tt.want {
+			t.Errorf("trimTrailingSeparators(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestResolveKeySize(t *testing.T) {
 	tests := []struct {
 		name              string
