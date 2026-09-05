@@ -208,7 +208,7 @@ func runMain(args []string) int {
 			return failMsg("-xs/--expand-size is required with -x/--expand")
 		}
 		if len(fs.Args()) > 0 {
-			failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
+			return failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
 		}
 		if err := expandContainer(runCmd, runDirect, expandVal, expandSizeVal, *keyFile); err != nil {
 			return fail(err)
@@ -221,7 +221,7 @@ func runMain(args []string) int {
 			return failMsg("-cs/--size is required with -c/--create")
 		}
 		if len(fs.Args()) > 0 {
-			failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
+			return failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
 		}
 		if keyFileVal != "" && *keyFile != "" {
 			return failMsg("-ck/--create-key-file and -k/--key cannot be used together")
@@ -254,7 +254,7 @@ func runMain(args []string) int {
 		source = expanded
 	}
 	if len(fs.Args()) > 0 {
-		failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
+		return failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
 	}
 
 	if umountVal != "" {

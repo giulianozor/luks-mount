@@ -98,31 +98,34 @@ func TestRunMain(t *testing.T) {
 		code        int
 		want        string
 		wantsStdout bool
+		notWant     string
 	}{
-		{"help short", []string{"-h"}, 0, "Usage:", true},
-		{"help long", []string{"--help"}, 0, "Usage:", true},
-		{"no operation shows usage", []string{}, 1, "Usage:", false},
-		{"unknown flag", []string{"-bogus"}, 1, "flag provided but not defined", false},
-		{"two operations", []string{"-s", "/dev/x", "-u", "/dev/x"}, 1, "only one of", false},
-		{"mount without source", []string{"-m", "/mnt"}, 1, "only valid with -s/--source", false},
-		{"size without create", []string{"-cs", "100M"}, 1, "only valid with -c/--create", false},
-		{"create-key-file without create", []string{"-ck", "/key"}, 1, "only valid with -c/--create", false},
-		{"key-size without create", []string{"-cks", "1024"}, 1, "only valid with -c/--create", false},
-		{"key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "-cks", "1024"}, 1, "only valid with -ck", false},
-		{"long key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "--key-size", "1024"}, 1, "only valid with -ck", false},
-		{"create without size", []string{"-c", "img"}, 1, "required with -c/--create", false},
-		{"expand-size without expand", []string{"-xs", "1G"}, 1, "only valid with -x/--expand", false},
-		{"expand without size", []string{"-x", "/tmp/x.img"}, 1, "required with -x/--expand", false},
-		{"create key conflicts", []string{"-c", "img", "-cs", "32M", "-k", "/k", "-ck", "/k2"}, 1, "cannot be used together", false},
-		{"umount with key rejected", []string{"-u", "/dev/x", "-k", "/k"}, 1, "not valid with -u/--umount", false},
+		{"help short", []string{"-h"}, 0, "Usage:", true, ""},
+		{"help long", []string{"--help"}, 0, "Usage:", true, ""},
+		{"no operation shows usage", []string{}, 1, "Usage:", false, ""},
+		{"unknown flag", []string{"-bogus"}, 1, "flag provided but not defined", false, ""},
+		{"two operations", []string{"-s", "/dev/x", "-u", "/dev/x"}, 1, "only one of", false, ""},
+		{"mount without source", []string{"-m", "/mnt"}, 1, "only valid with -s/--source", false, ""},
+		{"size without create", []string{"-cs", "100M"}, 1, "only valid with -c/--create", false, ""},
+		{"create-key-file without create", []string{"-ck", "/key"}, 1, "only valid with -c/--create", false, ""},
+		{"key-size without create", []string{"-cks", "1024"}, 1, "only valid with -c/--create", false, ""},
+		{"key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "-cks", "1024"}, 1, "only valid with -ck", false, ""},
+		{"long key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "--key-size", "1024"}, 1, "only valid with -ck", false, ""},
+		{"create without size", []string{"-c", "img"}, 1, "required with -c/--create", false, ""},
+		{"expand-size without expand", []string{"-xs", "1G"}, 1, "only valid with -x/--expand", false, ""},
+		{"expand without size", []string{"-x", "/tmp/x.img"}, 1, "required with -x/--expand", false, ""},
+		{"create key conflicts", []string{"-c", "img", "-cs", "32M", "-k", "/k", "-ck", "/k2"}, 1, "cannot be used together", false, ""},
+		{"umount with key rejected", []string{"-u", "/dev/x", "-k", "/k"}, 1, "not valid with -u/--umount", false, ""},
 		// These reach expand/umount but fail on the missing path before any
 		// privileged probe or command runs.
-		{"expand missing container", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G"}, 1, "stat /nonexistent/lmount-test.img", false},
-		{"umount missing source", []string{"-u", "/nonexistent/lmount-test.img"}, 1, "does not exist", false},
-		{"expand with positional argument", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G", "extra"}, 1, "unexpected positional argument", false},
-		{"create with positional argument", []string{"-c", "img", "-cs", "32M", "extra"}, 1, "unexpected positional argument", false},
-		{"mount with positional argument", []string{"-s", "/dev/__test_dev__", "extra"}, 1, "unexpected positional argument", false},
-		{"create with an invalid container name", []string{"-c", "bad name.txt", "-cs", "32M"}, 1, "invalid device-mapper name", false},
+		{"expand missing container", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G"}, 1, "stat /nonexistent/lmount-test.img", false, ""},
+		{"umount missing source", []string{"-u", "/nonexistent/lmount-test.img"}, 1, "does not exist", false, ""},
+		// A positional argument aborts the operation entirely: the "unexpected
+		// positional" error is emitted instead of the operation running.
+		{"expand with positional argument", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G", "extra"}, 1, "unexpected positional argument", false, "stat /nonexistent"},
+		{"create with positional argument", []string{"-c", "img", "-cs", "32M", "extra"}, 1, "unexpected positional argument", false, ""},
+		{"mount with positional argument", []string{"-s", "/dev/__test_dev__", "extra"}, 1, "unexpected positional argument", false, ""},
+		{"create with an invalid container name", []string{"-c", "bad name.txt", "-cs", "32M"}, 1, "invalid device-mapper name", false, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -138,6 +141,9 @@ func TestRunMain(t *testing.T) {
 			})
 			if !strings.Contains(got, tc.want) {
 				t.Errorf("runMain(%v) output missing %q, got %q", tc.args, tc.want, got)
+			}
+			if tc.notWant != "" && strings.Contains(got, tc.notWant) {
+				t.Errorf("runMain(%v) output should not contain %q, got %q", tc.args, tc.notWant, got)
 			}
 		})
 	}
