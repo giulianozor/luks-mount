@@ -250,6 +250,22 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects key file path equal to container path under a cleaned spelling", func(t *testing.T) {
+		run := func(name string, args ...string) error { return nil }
+		dir, err := filepath.Abs(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		img := filepath.Join(dir, "same.img")
+		// "dir/sub/../same.img" and "dir/same.img" resolve to the same file but
+		// differ textually; the guard must still reject the collision.
+		sneaky := dir + "/sub/../same.img"
+		err = createContainer(run, run, img, "256M", "", sneaky, 512)
+		if err == nil || !strings.Contains(err.Error(), "must be different") {
+			t.Errorf("expected a cleaned-path collision error, got %v", err)
+		}
+	})
+
 	t.Run("key file already exists", func(t *testing.T) {
 		run := func(name string, args ...string) error { return nil }
 		dir := t.TempDir()

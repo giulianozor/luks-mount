@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 func createContainer(runSudo, runDirect func(name string, args ...string) error, name, size, existingKeyFile, keyFile string, keySize int) error {
@@ -19,9 +20,10 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 
 	// A generated key file and the container are separate objects; if they are
 	// the same path, writing the key overwrites the file that then becomes the
-	// container (and vice versa), silently corrupting the key.
-	if keyFile != "" && keyFile == name {
-		return fmt.Errorf("key file path and container path must be different, both are %q", name)
+	// container (and vice versa), silently corrupting the key. Compare cleaned
+	// paths so equivalent spellings (e.g. "./a.img" and "a.img") collide too.
+	if keyFile != "" && filepath.Clean(keyFile) == filepath.Clean(name) {
+		return fmt.Errorf("key file path and container path must be different, both are %q", filepath.Clean(name))
 	}
 
 	if _, err := os.Stat(name); err == nil {
