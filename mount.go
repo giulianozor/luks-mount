@@ -215,7 +215,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	const maxMountPointCollisions = 16
 	for attempt := 0; ; attempt++ {
 		if attempt == maxMountPointCollisions {
-			return failOpen(fmt.Errorf("no free mount point: %s and its %d .mnt variants are all files", mountPointBase, maxMountPointCollisions))
+			return failOpen(fmt.Errorf("no free mount point: %s and up to %d .mnt variants are all files", mountPointBase, maxMountPointCollisions-1))
 		}
 		fi, err := os.Stat(mountPoint)
 		if err == nil {
