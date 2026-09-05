@@ -295,6 +295,29 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects an empty key file for a LUKS source before opening", func(t *testing.T) {
+		var luksOpenCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		emptyKey := filepath.Join(t.TempDir(), "empty.key")
+		if err := os.WriteFile(emptyKey, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", emptyKey, filepath.Join(t.TempDir(), "mnt"))
+		if err == nil || !strings.Contains(err.Error(), "is empty") {
+			t.Errorf("expected an empty-key-file error, got %v", err)
+		}
+		if luksOpenCalls != 0 {
+			t.Errorf("luksOpen should not be attempted with an empty key, got %d calls", luksOpenCalls)
+		}
+	})
+
 	t.Run("rejects a missing key file for a LUKS source before opening", func(t *testing.T) {
 		var luksOpenCalls int
 		runCmd := func(name string, args ...string) error {

@@ -121,6 +121,11 @@ func checkKeyFile(path, what string) error {
 	if fi.IsDir() {
 		return fmt.Errorf("%s %q is a directory", what, path)
 	}
+	if fi.Mode().IsRegular() && fi.Size() == 0 {
+		// A zero-length key file can never authenticate a LUKS device; reject
+		// it before luksOpen returns its cryptic "no key available" error.
+		return fmt.Errorf("%s %q is empty", what, path)
+	}
 	return nil
 }
 

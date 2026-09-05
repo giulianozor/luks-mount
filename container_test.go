@@ -337,6 +337,28 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("empty existing key file is rejected", func(t *testing.T) {
+		var ranCryptsetup bool
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" {
+				ranCryptsetup = true
+			}
+			return nil
+		}
+		img := filepath.Join(t.TempDir(), "c.img")
+		emptyKey := filepath.Join(t.TempDir(), "empty.key")
+		if err := os.WriteFile(emptyKey, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := createContainer(run, run, img, "256M", emptyKey, "", 512)
+		if err == nil || !strings.Contains(err.Error(), "is empty") {
+			t.Errorf("expected an empty-key-file error, got %v", err)
+		}
+		if ranCryptsetup {
+			t.Error("cryptsetup should not run when the existing key file is empty")
+		}
+	})
+
 	t.Run("directory existing key file is rejected", func(t *testing.T) {
 		var ranCryptsetup bool
 		run := func(name string, args ...string) error {
@@ -837,6 +859,30 @@ func TestExpandContainer(t *testing.T) {
 		}
 		if len(truncateArgs) != 0 {
 			t.Errorf("container should not be grown when the key file is a directory, truncate: %v", truncateArgs)
+		}
+	})
+
+	t.Run("empty key file is rejected before growing", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var truncateArgs []string
+		run := func(name string, args ...string) error {
+			if name == "truncate" {
+				truncateArgs = append(truncateArgs, args...)
+			}
+			return nil
+		}
+		emptyKey := filepath.Join(dir, "empty.key")
+		if err := os.WriteFile(emptyKey, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := expandContainer(run, run, f, "256M", emptyKey)
+		if err == nil || !strings.Contains(err.Error(), "is empty") {
+			t.Errorf("expected an empty-key-file error, got %v", err)
+		}
+		if len(truncateArgs) != 0 {
+			t.Errorf("container should not be grown when the key file is empty, truncate: %v", truncateArgs)
 		}
 	})
 
