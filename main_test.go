@@ -128,6 +128,7 @@ func TestRunMain(t *testing.T) {
 		// privileged probe or command runs.
 		{"expand missing container", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G"}, 1, "stat /nonexistent/lmount-test.img", false, ""},
 		{"umount missing source", []string{"-u", "/nonexistent/lmount-test.img"}, 1, "does not exist", false, ""},
+		{"mount missing source", []string{"-s", "/nonexistent/lmount-test.img"}, 1, "source /nonexistent/lmount-test.img does not exist", false, ""},
 		// A positional argument aborts the operation entirely: the "unexpected
 		// positional" error is emitted instead of the operation running.
 		{"expand with positional argument", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G", "extra"}, 1, "unexpected positional argument", false, "stat /nonexistent"},

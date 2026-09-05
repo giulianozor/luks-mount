@@ -1987,3 +1987,44 @@ func TestOpenAndMountLeadingDashSource(t *testing.T) {
 		t.Errorf("no command should run for a leading-dash source, saw %d", runs)
 	}
 }
+
+func TestOpenAndMountRelativeHomeRefused(t *testing.T) {
+	dir := t.TempDir()
+	img := filepath.Join(dir, "img")
+	if err := os.WriteFile(img, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origHome := userHomeDir
+	userHomeDir = func() (string, error) { return "relhome", nil }
+	t.Cleanup(func() { userHomeDir = origHome })
+
+	err := openAndMount(func(s string, a ...string) error { return nil }, func(s string, a ...string) ([]byte, error) { return nil, fmt.Errorf("no cryptsetup needed") }, img, "", "")
+	if err == nil || !strings.Contains(err.Error(), "cannot infer an absolute mount point") {
+		t.Fatalf("expected a relative-HOME refusal, got %v", err)
+	}
+}
+
+func TestUmountAndCloseBareNameSearchesDev(t *testing.T) {
+	if _, err := os.Stat("/dev/fd"); err != nil {
+		t.Skip("no /dev/fd entry to exercise the bare-name device resolution")
+	}
+	var searchArg string
+	run := func(name string, args ...string) error { return nil }
+	runOutput := func(name string, args ...string) ([]byte, error) {
+		for i, a := range args {
+			if a == "-S" && i+1 < len(args) {
+				searchArg = args[i+1]
+			}
+		}
+		return []byte("\n"), nil
+	}
+
+	err := umountAndClose(func(string) bool { return false }, run, runOutput, "fd")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if searchArg != "/dev/fd" {
+		t.Errorf("expected findmnt to search /dev/fd, got %q", searchArg)
+	}
+}
