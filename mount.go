@@ -39,6 +39,10 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 			// A directory can never be a mount source (lmount does no bind
 			// mounts); rejecting it up front is clearer than mount's own failure.
 			return fmt.Errorf("source %s is a directory, not a device or file", source)
+		} else if fi.Mode().IsRegular() && fi.Size() == 0 {
+			// An empty file carries no filesystem for a loop mount to attach;
+			// mount's error on a zero-length image is cryptic.
+			return fmt.Errorf("source %s is an empty file and cannot be mounted", source)
 		}
 	}
 

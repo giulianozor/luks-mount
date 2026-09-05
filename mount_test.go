@@ -518,6 +518,37 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects an empty file source before mounting", func(t *testing.T) {
+		var mountCalls, cryptCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				mountCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			if name == "cryptsetup" {
+				cryptCalls++
+			}
+			return nil, errors.New("not luks")
+		}
+
+		empty := filepath.Join(t.TempDir(), "empty.img")
+		if err := os.WriteFile(empty, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		err := openAndMount(runCmd, runOutput, empty, "", "")
+		if err == nil || !strings.Contains(err.Error(), "empty file") {
+			t.Errorf("expected an empty-file error, got %v", err)
+		}
+		if mountCalls != 0 {
+			t.Errorf("mount should not be attempted for an empty file source, got %d calls", mountCalls)
+		}
+		if cryptCalls != 0 {
+			t.Errorf("cryptsetup should not be probed for an empty file source, got %d calls", cryptCalls)
+		}
+	})
+
 	t.Run("rejects a nonexistent plain file source before mounting", func(t *testing.T) {
 		var mountCalls int
 		runCmd := func(name string, args ...string) error {
