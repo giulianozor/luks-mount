@@ -65,8 +65,10 @@ lmount -s <source> -k <keyfile> -m <mountpoint>
 ```
 
 - `-s` / `--source` — path to a block device (e.g. `sda1` or `/dev/sda1`) or a file-backed container.
-- `-k` / `--key` — optional path to a LUKS key file. It is only valid when the source is detected as LUKS; passing it for a non-LUKS (or nonexistent) source is an error.
-- `-m` / `--mount` — mount point (default: `~/<source-basename>`). If a file already exists at the path, `.mnt` is appended automatically.
+- `-k` / `--key` — optional path to a LUKS key file. It is only valid when the source is detected as LUKS; passing it for a non-LUKS (or nonexistent) source is an error. The key file must exist, be a regular file, and be non-empty; the source itself (even via a relative or symlinked spelling) is rejected as a key.
+- `-m` / `--mount` — mount point (default: `~/<source-basename>`). If a file already exists at the path, `.mnt` is appended automatically (bounded to 16 candidates). Mounting at the filesystem root (`-m /`) and mounting under a path that is actually a file are refused.
+
+Sources and mount points that are directories, FIFOs, sockets, empty files, or missing paths are rejected up front with clear errors instead of failing cryptically later. If the source is already open as a LUKS mapping, `lmount` reports it instead of attempting a second `luksOpen`. Whenever `lmount` creates the mount point itself, it takes ownership of it (so files written there belong to the invoking user); pre-existing directories are never re-chowned.
 
 Source resolution: if the source path does not exist as a file or directory, `/dev/<source>` is tried (so bare names like `sda1` work). For valid sources, LUKS encryption is auto-detected; nonexistent paths are rejected with a clear error before anything is mounted.
 
@@ -97,9 +99,11 @@ Minimum container size is 32M.
 
 - `-c` / `--create` — name of the container file to create.
 - `-cs` / `--size` — size with suffix `M` or `G` (e.g. `100M`, `2G`). The block size is chosen by tier to balance speed and waste: ≤1 GiB uses 1–32 MiB blocks, 1–10 GiB uses 256 MiB, 10–100 GiB uses 512 MiB, >100 GiB uses 1024 MiB. The image is allocated to exactly the requested size (a `truncate` extension is used when the size is not a multiple of the tier's block size).
-- `-ck` / `--create-key-file` — optional path for a key file. When set, a random key file is generated (mode `0600`, owner-only) and installed as the container's initial key.
+- `-ck` / `--create-key-file` — optional path for a key file. When set, a random key file is generated (mode `0600`, owner-only) and installed as the container's initial key. The file's size is verified after generation, and a too-short file aborts the create.
 - `-cks` / `--key-size` — key file size in bytes (default: 512). Only valid when `-ck` is also used.
 - `-k` / `--key` — an existing key file to key the container from, instead of `-ck`. `-k` and `-ck` are mutually exclusive.
+
+The key file must not alias the container path, must not already exist (for `-ck`), and must be a non-empty regular file (for `-k`). The filesystem root cannot be used as a container name, and a key file that is a directory, FIFO, or socket is rejected before anything is created.
 
 `-c` cannot be combined with `-s`, `-u`, or `-x` (the operation flags are mutually exclusive).
 
@@ -117,7 +121,7 @@ Expands an existing LUKS-encrypted file-backed container by appending zero-fille
 4. Closes the LUKS device. If a step fails while the mapping is open, `lmount` warns so you can close it manually before touching the container.
 5. Prints the old and new file sizes.
 
-The container must already be a LUKS device with an ext4 filesystem.
+The container must already be a LUKS device with an ext4 filesystem. The expand is refused while its LUKS mapping is still open (`truncate` would grow the file underneath a live filesystem), and a key file that is the container itself is rejected before anything is touched.
 
 - `-x` / `--expand` — path to the LUKS container file to expand.
 - `-xs` / `--expand-size` — additional size with suffix `M` or `G` (e.g. `100M`, `2G`).
