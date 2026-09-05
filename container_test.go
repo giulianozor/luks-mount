@@ -858,6 +858,59 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("failed cleanup warns instead of hiding the original error", func(t *testing.T) {
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "sub")
+		if err := os.Mkdir(sub, 0755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(sub, 0755) })
+		img := filepath.Join(sub, "c.img")
+		kf := filepath.Join(sub, "keyfile")
+		run := func(name string, args ...string) error {
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
+				return os.WriteFile(kf, bytes.Repeat([]byte("x"), 512), 0644)
+			}
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
+				return os.WriteFile(img, []byte("container"), 0644)
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksFormat" {
+				// Files exist now; take the directory's write permission away so
+				// the failure cleanup (os.Remove) cannot succeed. This must
+				// happen only after the mocks have written the files.
+				if err := os.Chmod(sub, 0555); err != nil {
+					t.Fatal(err)
+				}
+				return errors.New("luksFormat failed")
+			}
+			return nil
+		}
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldStderr := os.Stderr
+		os.Stderr = w
+		defer func() { os.Stderr = oldStderr }()
+
+		err = createContainer(run, run, img, "256M", "", kf, 512)
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		stderr := buf.String()
+
+		if err == nil || !strings.Contains(err.Error(), "luksFormat failed") {
+			t.Errorf("expected the luksFormat error, got %v", err)
+		}
+		if !strings.Contains(stderr, "Warning: removing key file") {
+			t.Errorf("expected a key-file removal warning on stderr, got %q", stderr)
+		}
+		if !strings.Contains(stderr, "Warning: removing container") {
+			t.Errorf("expected a container removal warning on stderr, got %q", stderr)
+		}
+	})
+
 	t.Run("luksClose fails", func(t *testing.T) {
 		img := filepath.Join(t.TempDir(), "c.img")
 		run := func(name string, args ...string) error {
