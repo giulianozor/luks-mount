@@ -210,12 +210,12 @@ func runMain(args []string) int {
 	if keySizeSet && keyFileVal == "" {
 		return failMsg("-cks/--key-size is only valid with -ck/--create-key-file")
 	}
-	if keySizeSet && keySizeVal%8 != 0 {
-		// cryptsetup key sizes are whole bytes; a non-multiple-of-8 bit size
-		// could never open any keyslot, and dd would have written a key file
-		// of that absurd length before cryptsetup rejected it cryptically.
-		// Reject the value up front while the failure is cheap to recover from.
-		return failMsg("-cks/--key-size must be a multiple of 8, got %d", keySizeVal)
+	if keySizeSet && (keySizeVal <= 0 || keySizeVal%8 != 0) {
+		// cryptsetup key sizes are whole bytes and a zero/negative key can
+		// never open any keyslot; dd would have written an empty key file of
+		// that absurd length before cryptsetup rejected it cryptically. Reject
+		// the value up front while the failure is cheap to recover from.
+		return failMsg("-cks/--key-size must be a positive multiple of 8, got %d", keySizeVal)
 	}
 
 	if expandSizeVal != "" && expandVal == "" {
