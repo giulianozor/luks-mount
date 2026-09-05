@@ -136,6 +136,7 @@ func TestRunMain(t *testing.T) {
 		{"expand with positional argument", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G", "extra"}, 1, "unexpected positional argument", false, "stat /nonexistent"},
 		{"create with positional argument", []string{"-c", "img", "-cs", "32M", "extra"}, 1, "unexpected positional argument", false, ""},
 		{"mount with positional argument", []string{"-s", "/dev/__test_dev__", "extra"}, 1, "unexpected positional argument", false, "stat /dev/__test_dev__"},
+		{"umount with positional argument", []string{"-u", "/dev/nope", "extra"}, 1, "unexpected positional argument", false, "source /dev/nope does not exist"},
 		{"create with an invalid container name", []string{"-c", "bad name.txt", "-cs", "32M"}, 1, "invalid device-mapper name", false, ""},
 		{"create with a leading-dash container name", []string{"-c", "-evil.img", "-cs", "32M"}, 1, "invalid device-mapper name", false, ""},
 	}
