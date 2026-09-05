@@ -421,10 +421,13 @@ func TestOpenAndMount_luks(t *testing.T) {
 	})
 
 	t.Run("reports a source that is already open instead of luksOpen", func(t *testing.T) {
-		var luksOpenCalls int
+		var luksOpenCalls, luksCloseCalls int
 		runCmd := func(name string, args ...string) error {
 			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
 				luksOpenCalls++
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				luksCloseCalls++
 			}
 			return nil
 		}
@@ -443,6 +446,9 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 		if luksOpenCalls != 0 {
 			t.Errorf("luksOpen should not be attempted for an already-open source, got %d calls", luksOpenCalls)
+		}
+		if luksCloseCalls != 0 {
+			t.Errorf("luksClose must not be attempted on a mapping that another session owns, got %d calls", luksCloseCalls)
 		}
 	})
 
