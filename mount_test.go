@@ -489,10 +489,13 @@ func TestOpenAndMount_luks(t *testing.T) {
 	})
 
 	t.Run("rejects a key file that is the source itself", func(t *testing.T) {
-		var luksOpenCalls int
+		var luksOpenCalls, luksCloseCalls int
 		runCmd := func(name string, args ...string) error {
 			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
 				luksOpenCalls++
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				luksCloseCalls++
 			}
 			return nil
 		}
@@ -511,6 +514,9 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 		if luksOpenCalls != 0 {
 			t.Errorf("luksOpen must not be attempted for a colliding key file, got %d calls", luksOpenCalls)
+		}
+		if luksCloseCalls != 0 {
+			t.Errorf("luksClose must not be attempted before any mapping was opened, got %d calls", luksCloseCalls)
 		}
 	})
 
