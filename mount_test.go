@@ -565,6 +565,48 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("mount failure warns when the created mount point cannot be removed", func(t *testing.T) {
+		parent := filepath.Join(t.TempDir(), "ro")
+		if err := os.MkdirAll(parent, 0755); err != nil {
+			t.Fatal(err)
+		}
+		mp := filepath.Join(parent, "mnt")
+
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				// Make the just-created mount point unremovable before the
+				// cleanup runs, then fail so cleanup is triggered.
+				if err := os.Chmod(parent, 0555); err != nil {
+					t.Fatal(err)
+				}
+				return errors.New("mount fail")
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		r, w, err2 := os.Pipe()
+		if err2 != nil {
+			t.Fatal(err2)
+		}
+		oldStderr := os.Stderr
+		os.Stderr = w
+		defer func() { os.Stderr = oldStderr }()
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", mp)
+		if err == nil || !strings.Contains(err.Error(), "mount failed") {
+			t.Fatalf("expected a mount failure, got %v", err)
+		}
+
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		t.Cleanup(func() { os.Chmod(parent, 0755) })
+		if !strings.Contains(buf.String(), "Warning: removing mount point") {
+			t.Errorf("expected a cleanup warning on stderr, got %q", buf.String())
+		}
+	})
+
 	t.Run("refuses to mount at the filesystem root", func(t *testing.T) {
 		var mountCalls int
 		runCmd := func(name string, args ...string) error {

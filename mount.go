@@ -201,7 +201,12 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 			}
 		}
 		if createdMountpoint {
-			_ = os.Remove(mountPoint)
+			// Surface a failed cleanup: leaving a stray empty directory named
+			// like a mount point is confusing, but so is a hidden error when
+			// it cannot be removed (e.g. a parent directory became read-only).
+			if err := os.Remove(mountPoint); err != nil && !os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "Warning: removing mount point %s after failure: %v\n", mountPoint, err)
+			}
 		}
 		return fmt.Errorf("mount failed: %w (device %s, target %s)", err, device, mountPoint)
 	}
