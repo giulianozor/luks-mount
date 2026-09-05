@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // makeSocket creates a unix socket file and returns a cleanup function.
@@ -2027,4 +2028,65 @@ func TestUmountAndCloseBareNameSearchesDev(t *testing.T) {
 	if searchArg != "/dev/fd" {
 		t.Errorf("expected findmnt to search /dev/fd, got %q", searchArg)
 	}
+}
+
+func TestWaitForDevice(t *testing.T) {
+	t.Run("returns immediately when the node exists", func(t *testing.T) {
+		dir := t.TempDir()
+		orig := devStat
+		devStat = func(string) (os.FileInfo, error) { return nil, nil }
+		t.Cleanup(func() { devStat = orig })
+
+		start := time.Now()
+		waitForDevice(filepath.Join(dir, "node"))
+		if d := time.Since(start); d > 100*time.Millisecond {
+			t.Errorf("existing node took %v, want immediate", d)
+		}
+	})
+
+	t.Run("waits for a late-appearing node", func(t *testing.T) {
+		dir := t.TempDir()
+		orig := devStat
+		fails := 0
+		devStat = func(string) (os.FileInfo, error) {
+			fails++
+			if fails <= 2 {
+				return nil, fmt.Errorf("not yet")
+			}
+			return nil, nil
+		}
+		t.Cleanup(func() { devStat = orig })
+		origTries := waitForDeviceTries
+		waitForDeviceTries = 5
+		t.Cleanup(func() { waitForDeviceTries = origTries })
+
+		waitForDevice(filepath.Join(dir, "node"))
+		if fails != 3 {
+			t.Errorf("expected 3 stats for a node appearing on the 3rd, got %d", fails)
+		}
+	})
+
+	t.Run("gives up after the budget when the parent exists", func(t *testing.T) {
+		dir := t.TempDir()
+		// Do not override devStat so the node is genuinely absent, and keep
+		// os.Stat(dir) (the parent) working.
+		origTries := waitForDeviceTries
+		waitForDeviceTries = 2
+		t.Cleanup(func() { waitForDeviceTries = origTries })
+
+		start := time.Now()
+		waitForDevice(filepath.Join(dir, "node"))
+		if d := time.Since(start); d < 90*time.Millisecond {
+			t.Errorf("timeout path returned in %v, expected to burn the budget", d)
+		}
+	})
+
+	t.Run("skips polling when the parent directory is missing", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "no-parent")
+		start := time.Now()
+		waitForDevice(filepath.Join(missing, "node"))
+		if d := time.Since(start); d > 100*time.Millisecond {
+			t.Errorf("missing parent took %v, want immediate", d)
+		}
+	})
 }

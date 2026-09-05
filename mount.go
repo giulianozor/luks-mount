@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 var userHomeDir = os.UserHomeDir
@@ -20,6 +21,33 @@ var currentUser = user.Current
 // variable so tests can simulate an open mapping without touching /dev/mapper.
 // It shares the same stat-based probe umountAndClose uses (checkMapped).
 var mapperProbe = checkMapped
+
+// devStat probes whether a device node exists; a variable so tests can simulate
+// udev settling after luksOpen without racing real /dev entries.
+var devStat = os.Stat
+
+// waitForDevice polls until path exists (udev may take a moment to create a
+// freshly-opened /dev/mapper node) or the wait budget elapses. The caller then
+// proceeds regardless: mount will surface a real error, and only an artificial
+// early-return would ever be silently swallowed.
+var waitForDeviceTries = 20
+
+func waitForDevice(path string) {
+	for i := 0; i < waitForDeviceTries; i++ {
+		if _, err := devStat(path); err == nil {
+			return
+		}
+		if i == 0 {
+			// A missing parent directory means the node never existed and
+			// polling is pointless (e.g. /dev/mapper is absent on non-Linux,
+			// which is also what tests see with stubbed cryptsetup).
+			if _, perr := os.Stat(filepath.Dir(path)); perr != nil {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
 
 // checkSourceMode rejects a source entry that can never back a mount: a
 // directory, a FIFO/socket or other special non-device entry (which would also
@@ -244,6 +272,10 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	device := source
 	if encrypted {
 		device = "/dev/mapper/" + name
+		// luksOpen is kernel-synchronous, but udev may still be creating the
+		// stale /dev/mapper node when we are ready to mount; wait briefly so a
+		// slow system does not turn a settled mapping into a spurious ENOENT.
+		waitForDevice(device)
 	}
 	fmt.Printf("Mounting %s to %s...\n", device, mountPoint)
 	if err := runCmd("mount", device, mountPoint); err != nil {
