@@ -25,6 +25,13 @@ func fatal(err error) {
 	os.Exit(1)
 }
 
+// fatalMsg reports a formatted validation message on stderr and exits with
+// status 1, matching fatal for plain-text flag-validation errors.
+func fatalMsg(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "Error: %s\n", fmt.Sprintf(format, args...))
+	os.Exit(1)
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: lmount [flags] -s <source>\n\n")
 	fmt.Fprintf(os.Stderr, "Mount a device or file (auto-detects LUKS encryption):\n")
@@ -107,13 +114,11 @@ func main() {
 		ops++
 	}
 	if ops > 1 {
-		fmt.Fprintf(os.Stderr, "Error: only one of -s/--source, -u/--umount, -c/--create, -x/--expand may be used\n")
-		os.Exit(1)
+		fatalMsg("only one of -s/--source, -u/--umount, -c/--create, -x/--expand may be used")
 	}
 
 	if (*mountPoint != "" || *mountPointLong != "") && !mountPresent {
-		fmt.Fprintf(os.Stderr, "Error: -m/--mount is only valid with -s/--source\n")
-		os.Exit(1)
+		fatalMsg("-m/--mount is only valid with -s/--source")
 	}
 
 	*keyFile = firstNonEmpty(*keyFile, *keyFileLong)
@@ -136,35 +141,28 @@ func main() {
 	keySizeVal, keySizeSet := resolveKeySize(shortKeySizeSet, *createKeySize, longKeySizeSet, *createKeySizeLong, 512)
 
 	if sizeVal != "" && createVal == "" {
-		fmt.Fprintf(os.Stderr, "Error: -cs/--size is only valid with -c/--create\n")
-		os.Exit(1)
+		fatalMsg("-cs/--size is only valid with -c/--create")
 	}
 	if keyFileVal != "" && createVal == "" {
-		fmt.Fprintf(os.Stderr, "Error: -ck/--create-key-file is only valid with -c/--create\n")
-		os.Exit(1)
+		fatalMsg("-ck/--create-key-file is only valid with -c/--create")
 	}
 	if keySizeSet && createVal == "" {
-		fmt.Fprintf(os.Stderr, "Error: -cks/--key-size is only valid with -c/--create\n")
-		os.Exit(1)
+		fatalMsg("-cks/--key-size is only valid with -c/--create")
 	}
 	if keySizeSet && keyFileVal == "" {
-		fmt.Fprintf(os.Stderr, "Error: -cks/--key-size is only valid with -ck/--create-key-file\n")
-		os.Exit(1)
+		fatalMsg("-cks/--key-size is only valid with -ck/--create-key-file")
 	}
 
 	if expandSizeVal != "" && expandVal == "" {
-		fmt.Fprintf(os.Stderr, "Error: -xs/--expand-size is only valid with -x/--expand\n")
-		os.Exit(1)
+		fatalMsg("-xs/--expand-size is only valid with -x/--expand")
 	}
 
 	if expandVal != "" {
 		if expandSizeVal == "" {
-			fmt.Fprintf(os.Stderr, "Error: -xs/--expand-size is required with -x/--expand\n")
-			os.Exit(1)
+			fatalMsg("-xs/--expand-size is required with -x/--expand")
 		}
 		if len(flag.Args()) > 0 {
-			fmt.Fprintf(os.Stderr, "Error: unexpected positional argument(s): %s\n", strings.Join(flag.Args(), " "))
-			os.Exit(1)
+			fatalMsg("unexpected positional argument(s): %s", strings.Join(flag.Args(), " "))
 		}
 		if err := expandContainer(runCmd, runDirect, expandVal, expandSizeVal, *keyFile); err != nil {
 			fatal(err)
@@ -174,16 +172,13 @@ func main() {
 
 	if createVal != "" {
 		if sizeVal == "" {
-			fmt.Fprintf(os.Stderr, "Error: -cs/--size is required with -c/--create\n")
-			os.Exit(1)
+			fatalMsg("-cs/--size is required with -c/--create")
 		}
 		if len(flag.Args()) > 0 {
-			fmt.Fprintf(os.Stderr, "Error: unexpected positional argument(s): %s\n", strings.Join(flag.Args(), " "))
-			os.Exit(1)
+			fatalMsg("unexpected positional argument(s): %s", strings.Join(flag.Args(), " "))
 		}
 		if keyFileVal != "" && *keyFile != "" {
-			fmt.Fprintf(os.Stderr, "Error: -ck/--create-key-file and -k/--key cannot be used together\n")
-			os.Exit(1)
+			fatalMsg("-ck/--create-key-file and -k/--key cannot be used together")
 		}
 		if err := createContainer(runCmd, runDirect, createVal, sizeVal, *keyFile, keyFileVal, keySizeVal); err != nil {
 			fatal(err)
@@ -201,14 +196,12 @@ func main() {
 		os.Exit(1)
 	}
 	if len(flag.Args()) > 0 {
-		fmt.Fprintf(os.Stderr, "Error: unexpected positional argument(s): %s\n", strings.Join(flag.Args(), " "))
-		os.Exit(1)
+		fatalMsg("unexpected positional argument(s): %s", strings.Join(flag.Args(), " "))
 	}
 
 	if umountVal != "" {
 		if *keyFile != "" {
-			fmt.Fprintf(os.Stderr, "Error: -k/--key is not valid with -u/--umount (closing a LUKS mapping needs no key)\n")
-			os.Exit(1)
+			fatalMsg("-k/--key is not valid with -u/--umount (closing a LUKS mapping needs no key)")
 		}
 		// -m/--mount is rejected earlier ("only valid with -s/--source"); the
 		// umount mount point is always discovered from the running mount.
