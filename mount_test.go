@@ -162,6 +162,39 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("sniffs a LUKS-magic file without probing cryptsetup", func(t *testing.T) {
+		dir := t.TempDir()
+		src := filepath.Join(dir, "luks.img")
+		if err := os.WriteFile(src, []byte("LUKS\xba\xbe\x00\x02padding"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		var cryptCalls, luksOpenCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			if name == "cryptsetup" {
+				cryptCalls++
+			}
+			return nil, errors.New("not luks")
+		}
+
+		err := openAndMount(runCmd, runOutput, src, "", filepath.Join(dir, "mnt"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cryptCalls != 0 {
+			t.Errorf("cryptsetup must not be probed for a readable LUKS-magic file, got %d calls", cryptCalls)
+		}
+		if luksOpenCalls != 1 {
+			t.Errorf("expected exactly one luksOpen, got %d", luksOpenCalls)
+		}
+	})
+
 	t.Run("rejects a missing key file for a LUKS source before opening", func(t *testing.T) {
 		var luksOpenCalls int
 		runCmd := func(name string, args ...string) error {
@@ -329,6 +362,31 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 		if len(mountArgs) < 1 || mountArgs[0] != "/dev/__test_dev__" {
 			t.Errorf("expected mount source /dev/__test_dev__, got %v", mountArgs)
+		}
+	})
+
+	t.Run("sniffs a plain file without probing cryptsetup", func(t *testing.T) {
+		dir := t.TempDir()
+		src := filepath.Join(dir, "plain.img")
+		if err := os.WriteFile(src, []byte("not luks"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		var cryptCalls int
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			if name == "cryptsetup" {
+				cryptCalls++
+			}
+			return nil, errors.New("not luks")
+		}
+
+		err := openAndMount(runCmd, runOutput, src, "", filepath.Join(dir, "mnt"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cryptCalls != 0 {
+			t.Errorf("cryptsetup must not be probed for a readable non-LUKS file, got %d calls", cryptCalls)
 		}
 	})
 

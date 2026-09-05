@@ -35,7 +35,14 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		}
 	}
 
-	encrypted := isLuks(source)
+	// Deciding LUKS by reading the header's magic directly avoids a privileged
+	// cryptsetup probe (and a possible sudo prompt) for every plain source we
+	// can read ourselves. Only sources that cannot be read locally (e.g. a
+	// device node without read permission) fall back to the cryptsetup probe.
+	encrypted, sniffable := sniffLuks(source)
+	if !sniffable {
+		encrypted = isLuks(source)
+	}
 
 	if keyFile != "" && !encrypted {
 		// A key file only makes sense for a LUKS source. Silently ignoring a

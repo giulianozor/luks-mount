@@ -144,17 +144,28 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 
 const luksMagic = "LUKS\xba\xbe"
 
-func isLuksContainer(path string) bool {
+// sniffLuks reports whether path begins with the LUKS magic and whether the
+// header could be read at all. A successful read showing no magic proves the
+// source is not LUKS without needing a privileged cryptsetup probe; a source
+// that cannot be read (e.g. a device node without read permission) must be
+// probed via cryptsetup instead.
+func sniffLuks(path string) (luks bool, readable bool) {
 	f, err := os.Open(path)
 	if err != nil {
-		return false
+		return false, false
 	}
 	defer f.Close()
 	buf := make([]byte, len(luksMagic))
 	if _, err := io.ReadFull(f, buf); err != nil {
-		return false
+		// A short/empty source cannot be LUKS.
+		return false, true
 	}
-	return string(buf) == luksMagic
+	return string(buf) == luksMagic, true
+}
+
+func isLuksContainer(path string) bool {
+	luks, read := sniffLuks(path)
+	return read && luks
 }
 
 // writeZeros writes exactly `total` zero bytes to a new output file `of`. It
