@@ -219,7 +219,29 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	if name == "" {
 		return fmt.Errorf("cannot determine name from empty source")
 	}
-	encrypted := checkMapped(name)
+	// Reject a source whose basename could not be a device-mapper mapping
+	// before treating it as one: for e.g. "." the bare probe would stat
+	// /dev/mapper/. (the /dev/mapper directory) and misclassify a plain
+	// directory as an open mapping. An open mapping still wins over a missing
+	// path (the backing file may have been deleted), so the mapping is checked
+	// first.
+	encrypted := checkMapperName(name) == nil && checkMapped(name)
+
+	// Validate the source the same way openAndMount does. A directory can
+	// never back a mount and would otherwise be misread as an open mapping
+	// (e.g. "." probes /dev/mapper/. == /dev/mapper) or hit a cryptic findmnt
+	// failure, so catch it up front. Missing path-like sources error out
+	// unless an open mapping (checked above) can still be detached.
+	if !strings.HasPrefix(source, "/dev/") && source != "" {
+		fi, err := os.Stat(source)
+		if err != nil {
+			if os.IsNotExist(err) && !encrypted && strings.Contains(source, "/") {
+				return fmt.Errorf("source %s does not exist", source)
+			}
+		} else if fi.IsDir() {
+			return fmt.Errorf("source %s is a directory, not a device or file", source)
+		}
+	}
 
 	search := source
 	if encrypted {
@@ -227,10 +249,16 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	} else {
 		search = resolveSource(source)
 		if search == source {
-			if _, err := os.Stat(search); err == nil {
+			if fi, fiErr := os.Stat(search); fiErr == nil {
 				// The source resolved to an existing filesystem entry (e.g. a
 				// relative file path). Use its absolute path for findmnt so the
 				// search matches regardless of the caller's working directory.
+				if fi.IsDir() {
+					// A directory is not a mount source; mirror openAndMount's
+					// rejection (this is only reachable for a source under
+					// /dev that is a directory, e.g. /dev/mapper itself).
+					return fmt.Errorf("source %s is a directory, not a device or file", source)
+				}
 				if abs, absErr := filepath.Abs(search); absErr == nil {
 					search = abs
 				}
@@ -238,12 +266,6 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 				// A bare name that is neither an existing path nor resolvable
 				// is treated as a device (e.g. "sda1" -> /dev/sda1).
 				search = "/dev/" + name
-			} else if os.IsNotExist(err) && !strings.HasPrefix(source, "/dev/") {
-				// A path source that does not exist is almost certainly a typo.
-				// Surface it rather than silently reporting success while doing
-				// nothing. (Existing but unmounted sources stay idempotent, and
-				// /dev device nodes may legitimately be absent.)
-				return fmt.Errorf("source %s does not exist", source)
 			}
 		}
 	}

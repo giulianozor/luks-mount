@@ -1026,6 +1026,65 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a directory source instead of misdetecting a mapping", func(t *testing.T) {
+		var calledClose bool
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				calledClose = true
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+		checkMapped := func(name string) bool { return true }
+
+		// An injected probe that blindly reports "mapped" would previously mark
+		// "." as an open LUKS mapping (via /dev/mapper/. == /dev/mapper) and run
+		// a pointless luksClose; the directory rejection must win.
+		err := umountAndClose(checkMapped, runCmd, runOutput, ".")
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Fatalf("expected a directory-source error, got %v", err)
+		}
+		if calledClose {
+			t.Error("luksClose must not run for a directory source")
+		}
+	})
+
+	t.Run("rejects an absolute path pointing at a directory", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+		checkMapped := func(name string) bool { return false }
+
+		dir := t.TempDir()
+		err := umountAndClose(checkMapped, runCmd, runOutput, dir)
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("expected a directory-source error, got %v", err)
+		}
+	})
+
+	t.Run("detaches an open mapping whose backing file was deleted", func(t *testing.T) {
+		var closeName string
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" && len(args) > 1 {
+				closeName = args[1]
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+		checkMapped := func(name string) bool { return true }
+
+		// The source path no longer exists, but the mapping named after its
+		// basename is still open; the mapping must be found and closed, not
+		// dismissed with a "does not exist" error.
+		missing := filepath.Join(t.TempDir(), "gone.img")
+		err := umountAndClose(checkMapped, runCmd, runOutput, missing)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if closeName != "gone.img" {
+			t.Errorf("expected luksClose of the mapping 'gone.img', got %q", closeName)
+		}
+	})
+
 	t.Run("absolute path for bare relative file, not /dev/", func(t *testing.T) {
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "sdc1"), nil, 0644); err != nil {
