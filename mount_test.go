@@ -1125,6 +1125,45 @@ func TestUmountAndClose_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("closes the mapping even when the mount directory cannot be removed", func(t *testing.T) {
+		ro := filepath.Join(t.TempDir(), "ro")
+		if err := os.MkdirAll(ro, 0755); err != nil {
+			t.Fatal(err)
+		}
+		mnt := filepath.Join(ro, "mnt")
+		if err := os.Mkdir(mnt, 0755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(ro, 0755) })
+
+		// After a successful umount the empty directory stays behind but its
+		// parent is no longer writable, so the cleanup rmdir fails (EACCES).
+		// The filesystem is unmounted, so the LUKS mapping must still close.
+		if err := os.Chmod(ro, 0555); err != nil {
+			t.Fatal(err)
+		}
+
+		var calledClose bool
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				calledClose = true
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			return []byte(mnt), nil
+		}
+		checkMapped := func(name string) bool { return true }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, "__test_dev__")
+		if err == nil || !strings.Contains(err.Error(), "rmdir") {
+			t.Errorf("expected a cleanup error naming the rmdir, got %v", err)
+		}
+		if !calledClose {
+			t.Error("luksClose should still run once the filesystem is unmounted")
+		}
+	})
+
 	t.Run("rejects the filesystem root as a source", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error { return nil }
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
