@@ -355,6 +355,21 @@ func TestUsageDocumentsTildeExpansion(t *testing.T) {
 	}
 }
 
+func TestUsageFlagColumnAlignment(t *testing.T) {
+	out := captureStdout(t, func() { usageTo(os.Stdout) })
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, "  -") {
+			continue
+		}
+		// Every flag line is "  " + <flag field, 29 wide> + " " + description,
+		// so byte 31 is the separating space and the description starts at 32
+		// for every flag (the longest flag field is exactly 29).
+		if len(line) < 33 || line[31] != ' ' || line[32] == ' ' {
+			t.Errorf("usage flag column misaligned for line %q", line)
+		}
+	}
+}
+
 func TestUsageContainsCreateFlags(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {
