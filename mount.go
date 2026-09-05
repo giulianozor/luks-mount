@@ -32,21 +32,26 @@ var devStat = os.Stat
 // early-return would ever be silently swallowed.
 var waitForDeviceTries = 20
 
-func waitForDevice(path string) {
+// waitForDevice polls until path exists (udev may take a moment to create a
+// freshly-opened /dev/mapper node) or the wait budget elapses. It reports
+// whether the node was found; the caller proceeds either way so mount can
+// surface a real error, adding a hint when the probe timed out.
+func waitForDevice(path string) bool {
 	for i := 0; i < waitForDeviceTries; i++ {
 		if _, err := devStat(path); err == nil {
-			return
+			return true
 		}
 		if i == 0 {
 			// A missing parent directory means the node never existed and
 			// polling is pointless (e.g. /dev/mapper is absent on non-Linux,
 			// which is also what tests see with stubbed cryptsetup).
 			if _, perr := os.Stat(filepath.Dir(path)); perr != nil {
-				return
+				return false
 			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	return false
 }
 
 // checkSourceMode rejects a source entry that can never back a mount: a
@@ -275,7 +280,11 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		// luksOpen is kernel-synchronous, but udev may still be creating the
 		// stale /dev/mapper node when we are ready to mount; wait briefly so a
 		// slow system does not turn a settled mapping into a spurious ENOENT.
-		waitForDevice(device)
+		if !waitForDevice(device) {
+			// The budget elapsed; mount will fail clearly if the node is truly
+			// absent, but warn first so the reason is visible in the output.
+			fmt.Fprintf(os.Stderr, "Warning: device %s not found after luksOpen (udev may still be settling); continuing.\n", device)
+		}
 	}
 	fmt.Printf("Mounting %s to %s...\n", device, mountPoint)
 	if err := runCmd("mount", device, mountPoint); err != nil {

@@ -521,6 +521,55 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("warns when the mapping node does not appear after luksOpen", func(t *testing.T) {
+		dir := t.TempDir()
+		src := filepath.Join(dir, "luks.img")
+		if err := os.WriteFile(src, []byte("LUKS\xba\xbe\x00\x02padding"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		var luksOpenCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		origDevStat := devStat
+		devStat = func(string) (os.FileInfo, error) {
+			return nil, os.ErrNotExist
+		}
+		t.Cleanup(func() { devStat = origDevStat })
+		origTries := waitForDeviceTries
+		waitForDeviceTries = 3
+		t.Cleanup(func() { waitForDeviceTries = origTries })
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldStderr := os.Stderr
+		os.Stderr = w
+		defer func() { os.Stderr = oldStderr }()
+
+		err = openAndMount(runCmd, runOutput, src, "", filepath.Join(dir, "mnt"))
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		out := buf.String()
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if luksOpenCalls != 1 {
+			t.Errorf("expected exactly one luksOpen, got %d", luksOpenCalls)
+		}
+		if !strings.Contains(out, "not found after luksOpen") {
+			t.Errorf("expected a settling-hint warning, stderr=%q", out)
+		}
+	})
+
 	t.Run("rejects a directory key file for a LUKS source before opening", func(t *testing.T) {
 		var luksOpenCalls int
 		runCmd := func(name string, args ...string) error {
@@ -2038,7 +2087,9 @@ func TestWaitForDevice(t *testing.T) {
 		t.Cleanup(func() { devStat = orig })
 
 		start := time.Now()
-		waitForDevice(filepath.Join(dir, "node"))
+		if !waitForDevice(filepath.Join(dir, "node")) {
+			t.Error("expected the existing node to be found")
+		}
 		if d := time.Since(start); d > 100*time.Millisecond {
 			t.Errorf("existing node took %v, want immediate", d)
 		}
@@ -2060,7 +2111,9 @@ func TestWaitForDevice(t *testing.T) {
 		waitForDeviceTries = 5
 		t.Cleanup(func() { waitForDeviceTries = origTries })
 
-		waitForDevice(filepath.Join(dir, "node"))
+		if !waitForDevice(filepath.Join(dir, "node")) {
+			t.Error("expected the late-appearing node to be found")
+		}
 		if fails != 3 {
 			t.Errorf("expected 3 stats for a node appearing on the 3rd, got %d", fails)
 		}
@@ -2075,7 +2128,9 @@ func TestWaitForDevice(t *testing.T) {
 		t.Cleanup(func() { waitForDeviceTries = origTries })
 
 		start := time.Now()
-		waitForDevice(filepath.Join(dir, "node"))
+		if waitForDevice(filepath.Join(dir, "node")) {
+			t.Error("expected the timeout to report the node as missing")
+		}
 		if d := time.Since(start); d < 90*time.Millisecond {
 			t.Errorf("timeout path returned in %v, expected to burn the budget", d)
 		}
@@ -2084,7 +2139,9 @@ func TestWaitForDevice(t *testing.T) {
 	t.Run("skips polling when the parent directory is missing", func(t *testing.T) {
 		missing := filepath.Join(t.TempDir(), "no-parent")
 		start := time.Now()
-		waitForDevice(filepath.Join(missing, "node"))
+		if waitForDevice(filepath.Join(missing, "node")) {
+			t.Error("expected the missing parent to report the node as missing")
+		}
 		if d := time.Since(start); d > 100*time.Millisecond {
 			t.Errorf("missing parent took %v, want immediate", d)
 		}
