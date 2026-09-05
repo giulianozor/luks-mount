@@ -658,6 +658,30 @@ func TestOpenAndMount_luks(t *testing.T) {
 			t.Error("luksClose was called — cleanup should not run on success")
 		}
 	})
+
+	t.Run("does not chown a pre-existing mount point", func(t *testing.T) {
+		var chownCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "chown" {
+				chownCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		mp := filepath.Join(t.TempDir(), "existing")
+		if err := os.MkdirAll(mp, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", mp)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if chownCalls != 0 {
+			t.Errorf("chown must not retarget a pre-existing directory, got %d calls", chownCalls)
+		}
+	})
 }
 
 func TestOpenAndMount_nonLuks(t *testing.T) {

@@ -206,13 +206,20 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		return fmt.Errorf("mount failed: %w (device %s, target %s)", err, device, mountPoint)
 	}
 
-	current, err := user.Current()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: cannot determine current user: %v\n", err)
-	} else {
-		fmt.Printf("Setting ownership of %s...\n", mountPoint)
-		if err := runCmd("chown", current.Uid+":"+current.Gid, mountPoint); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not set ownership: %v\n", err)
+	// chown only mounts lmount created itself. Retargeting a pre-existing
+	// directory (e.g. an admin-managed /mnt/shared) changes who owns a path
+	// that is not lmount's to reassign; a fresh mount point must belong to the
+	// invoking user so files written there are owned by them. This is also why
+	// the chown entry in the sudoers example is flagged as optional.
+	if createdMountpoint {
+		current, err := user.Current()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: cannot determine current user: %v\n", err)
+		} else {
+			fmt.Printf("Setting ownership of %s...\n", mountPoint)
+			if err := runCmd("chown", current.Uid+":"+current.Gid, mountPoint); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not set ownership: %v\n", err)
+			}
 		}
 	}
 
