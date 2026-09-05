@@ -109,7 +109,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		// unmappable name would surface only as a cryptic cryptsetup failure
 		// after a privileged attempt, so reject it up front.
 		if err := checkMapperName(name); err != nil {
-			return err
+			return fmt.Errorf("source %s: %w", source, err)
 		}
 		if mapperProbe(name) {
 			// The mapping is already open; luksOpen would only fail with a

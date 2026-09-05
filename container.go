@@ -38,7 +38,7 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 	// The container's basename becomes its /dev/mapper mapping name; reject
 	// names cryptsetup could not open as a mapping before creating any files.
 	if err := checkMapperName(srcName(name)); err != nil {
-		return err
+		return fmt.Errorf("container %s: %w", name, err)
 	}
 
 	// A generated key file and the container are separate objects; if they are
@@ -273,7 +273,7 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	// as it did at create time; reject a name cryptsetup could not open before
 	// the backing file has been grown.
 	if err := checkMapperName(srcName(filename)); err != nil {
-		return err
+		return fmt.Errorf("container %s: %w", filename, err)
 	}
 
 	// Growing (truncate) the backing file while its LUKS mapping is still
