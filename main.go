@@ -104,7 +104,10 @@ func main() {
 	}
 
 	*keyFile = firstNonEmpty(*keyFile, *keyFileLong)
-	*mountPoint = firstNonEmpty(*mountPoint, *mountPointLong)
+	// Normalize a trailing separator on an explicit mount point ("-m /mnt/x/"),
+	// matching the source/umount/create/expand arguments. A root path ("/") is
+	// preserved by trimTrailingSeparators and remains an explicit choice.
+	*mountPoint = trimTrailingSeparators(firstNonEmpty(*mountPoint, *mountPointLong))
 	sizeVal := firstNonEmpty(*sizeFlag, *sizeFlagLong)
 	keyFileVal := firstNonEmpty(*createKeyFile, *createKeyFileLong)
 	shortKeySizeSet := false
