@@ -18,6 +18,13 @@ func linuxOnlyError() error {
 	return fmt.Errorf("lmount is Linux-only (requires cryptsetup, mount, findmnt, and /dev/mapper); unsupported OS: %s", goos)
 }
 
+// fatal reports err on stderr and exits with status 1. It is the single
+// error-reporting path for flag/argument validation and operation failures.
+func fatal(err error) {
+	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	os.Exit(1)
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: lmount [flags] -s <source>\n\n")
 	fmt.Fprintf(os.Stderr, "Mount a device or file (auto-detects LUKS encryption):\n")
@@ -75,8 +82,7 @@ func main() {
 	}
 
 	if err := linuxOnlyError(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		fatal(err)
 	}
 
 	expandVal := trimTrailingSeparators(firstNonEmpty(*expandFlag, *expandFlagLong))
@@ -161,8 +167,7 @@ func main() {
 			os.Exit(1)
 		}
 		if err := expandContainer(runCmd, runDirect, expandVal, expandSizeVal, *keyFile); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			fatal(err)
 		}
 		return
 	}
@@ -181,8 +186,7 @@ func main() {
 			os.Exit(1)
 		}
 		if err := createContainer(runCmd, runDirect, createVal, sizeVal, *keyFile, keyFileVal, keySizeVal); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			fatal(err)
 		}
 		return
 	}
@@ -209,15 +213,13 @@ func main() {
 		// -m/--mount is rejected earlier ("only valid with -s/--source"); the
 		// umount mount point is always discovered from the running mount.
 		if err := umountAndClose(checkMapped, runCmd, runOutputDirect, source); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			fatal(err)
 		}
 		return
 	}
 
 	fullSrc := resolveSource(source)
 	if err := openAndMount(runCmd, runOutput, fullSrc, *keyFile, *mountPoint); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		fatal(err)
 	}
 }
