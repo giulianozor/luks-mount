@@ -193,6 +193,8 @@ func TestCheckMapperName(t *testing.T) {
 		{"sda1", nil},
 		{"container.img", nil},
 		{"some-name_with.dots", nil},
+		{"-evil.img", fmt.Errorf("")},
+		{"-", fmt.Errorf("")},
 		{".", fmt.Errorf("")},
 		{"..", fmt.Errorf("")},
 		{"/", fmt.Errorf("")},

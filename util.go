@@ -73,10 +73,14 @@ func srcName(path string) string {
 // checkMapperName validates a device-mapper mapping name derived from a source
 // basename before it is passed to cryptsetup luksOpen. A name containing
 // whitespace or a path separator cannot be addressed as a single /dev/mapper
-// entry, and the names "." and ".." would collide with the /dev/mapper
+// entry, a leading dash would be misparsed as an option by cryptsetup, mount,
+// and umount, and the names "." and ".." would collide with the /dev/mapper
 // directory itself. Checking up front turns these into clear errors instead of
 // cryptic cryptsetup / shell failures.
 func checkMapperName(name string) error {
+	if name != "" && name[0] == '-' {
+		return fmt.Errorf("invalid device-mapper name %q", name)
+	}
 	if name == "." || name == ".." || strings.ContainsAny(name, " \t\r\n/") {
 		return fmt.Errorf("invalid device-mapper name %q", name)
 	}

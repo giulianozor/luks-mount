@@ -129,6 +129,7 @@ func TestRunMain(t *testing.T) {
 		{"create with positional argument", []string{"-c", "img", "-cs", "32M", "extra"}, 1, "unexpected positional argument", false, ""},
 		{"mount with positional argument", []string{"-s", "/dev/__test_dev__", "extra"}, 1, "unexpected positional argument", false, "stat /dev/__test_dev__"},
 		{"create with an invalid container name", []string{"-c", "bad name.txt", "-cs", "32M"}, 1, "invalid device-mapper name", false, ""},
+		{"create with a leading-dash container name", []string{"-c", "-evil.img", "-cs", "32M"}, 1, "invalid device-mapper name", false, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
