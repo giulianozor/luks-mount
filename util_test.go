@@ -79,6 +79,36 @@ func TestCheckMapperName(t *testing.T) {
 	}
 }
 
+func TestSameFilePath(t *testing.T) {
+	real := filepath.Join(t.TempDir(), "real")
+	if err := os.MkdirAll(real, 0755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		want bool
+	}{
+		{"same absolute path", filepath.Join(real, "img"), filepath.Join(real, "img"), true},
+		{"absolute and dot-slash spelling", filepath.Join(real, "img"), filepath.Join(real, ".", "img"), true},
+		{"absolute and symlinked parent", filepath.Join(link, "img"), filepath.Join(real, "img"), true},
+		{"symlinked parent with missing leaf", filepath.Join(link, "new"), filepath.Join(real, "new"), true},
+		{"different leafs", filepath.Join(real, "a"), filepath.Join(real, "b"), false},
+		{"empty vs non-empty", "", filepath.Join(real, "a"), false},
+	}
+	for _, tt := range tests {
+		if got := sameFilePath(tt.a, tt.b); got != tt.want {
+			t.Errorf("sameFilePath(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
+		}
+	}
+}
+
 func TestRemoveIfEmpty(t *testing.T) {
 	t.Run("never removes filesystem root", func(t *testing.T) {
 		err := removeIfEmpty(string(filepath.Separator))
