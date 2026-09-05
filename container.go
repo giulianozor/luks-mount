@@ -300,7 +300,7 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 			fmt.Fprintf(os.Stderr, "Warning: luksClose after resize2fs failure: %v (mapping left open)\n", closeErr)
 			return fmt.Errorf("resize2fs failed: %w (mapping left open)", err)
 		}
-		return fmt.Errorf("resize2fs failed: %w", err)
+		return fmt.Errorf("resize2fs failed: %w (container left grown; filesystem not resized)", err)
 	}
 
 	fmt.Printf("Checking filesystem %s...\n", devMapper)

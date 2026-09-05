@@ -1009,6 +1009,42 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("resize2fs fails reports the container is left grown", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var closeCalled bool
+		var shrinkArgs []string
+		run := func(name string, args ...string) error {
+			if name == "resize2fs" {
+				return errors.New("resize fail")
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				closeCalled = true
+			}
+			if name == "truncate" && len(args) >= 2 && args[0] == "-s" && !strings.HasPrefix(args[1], "+") {
+				shrinkArgs = args
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "resize2fs failed") {
+			t.Fatalf("expected resize2fs error, got %v", err)
+		}
+		if !closeCalled {
+			t.Error("expected luksClose after resize2fs failure")
+		}
+		if strings.Contains(err.Error(), "mapping left open") {
+			t.Errorf("mapping was closed; the error must not claim it is open: %v", err)
+		}
+		if !strings.Contains(err.Error(), "container left grown") {
+			t.Errorf("expected a left-grown hint when the mapping closed, got %v", err)
+		}
+		if len(shrinkArgs) != 0 {
+			t.Errorf("expected no rollback shrink after resize2fs failure, got %v", shrinkArgs)
+		}
+	})
+
 	t.Run("luksOpen fails surfaces a rollback failure", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")
