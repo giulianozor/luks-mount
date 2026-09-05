@@ -295,6 +295,22 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("not a regular file: %s", filename)
 	}
 
+	// The key file and the container are separate objects; passing the
+	// container itself as the key would make cryptsetup read a LUKS header as
+	// a key and fail cryptically. Compare canonical paths so a relative or
+	// symlinked spelling of the same file is caught too. Check this before the
+	// LUKS sniff and the mapping probe so a colliding key never opens the
+	// container or touches /dev/mapper unnecessarily.
+	if keyFile != "" && sameFilePath(keyFile, filename) {
+		return fmt.Errorf("key file path and container path must be different, both are %q", filepath.Clean(filename))
+	}
+
+	if keyFile != "" {
+		if err := checkKeyFile(keyFile, "key file"); err != nil {
+			return err
+		}
+	}
+
 	if !isLuksContainer(filename) {
 		return fmt.Errorf("not a LUKS container: %s", filename)
 	}
@@ -312,20 +328,6 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	// later rolled back. Refuse up front, mirroring openAndMount's guard.
 	if mapperProbe(srcName(filename)) {
 		return fmt.Errorf("container %s is mounted as /dev/mapper/%s; unmount it before expanding", filename, srcName(filename))
-	}
-
-	// The key file and the container are separate objects; passing the
-	// container itself as the key would make cryptsetup read a LUKS header as
-	// a key and fail cryptically. Compare canonical paths so a relative or
-	// symlinked spelling of the same file is caught too.
-	if keyFile != "" && sameFilePath(keyFile, filename) {
-		return fmt.Errorf("key file path and container path must be different, both are %q", filepath.Clean(filename))
-	}
-
-	if keyFile != "" {
-		if err := checkKeyFile(keyFile, "key file"); err != nil {
-			return err
-		}
 	}
 
 	if err := runDirect("truncate", "-s", fmt.Sprintf("+%d", total), filename); err != nil {
