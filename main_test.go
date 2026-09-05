@@ -108,6 +108,8 @@ func TestRunMain(t *testing.T) {
 		{"create-key-file without create", []string{"-ck", "/key"}, 1, "only valid with -c/--create", false},
 		{"key-size without create", []string{"-cks", "1024"}, 1, "only valid with -c/--create", false},
 		{"key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "-cks", "1024"}, 1, "only valid with -ck", false},
+		{"long key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "--key-size", "1024"}, 1, "only valid with -ck", false},
+		{"create without size", []string{"-c", "img"}, 1, "required with -c/--create", false},
 		{"expand-size without expand", []string{"-xs", "1G"}, 1, "only valid with -x/--expand", false},
 		{"expand without size", []string{"-x", "/tmp/x.img"}, 1, "required with -x/--expand", false},
 		{"create key conflicts", []string{"-c", "img", "-cs", "32M", "-k", "/k", "-ck", "/k2"}, 1, "cannot be used together", false},

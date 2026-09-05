@@ -253,6 +253,20 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("a home-directory lookup failure surfaces clearly", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		orig := userHomeDir
+		userHomeDir = func() (string, error) { return "", errors.New("no home") }
+		t.Cleanup(func() { userHomeDir = orig })
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", "")
+		if err == nil || !strings.Contains(err.Error(), "getting home directory") {
+			t.Errorf("expected a home-directory lookup error, got %v", err)
+		}
+	})
+
 	t.Run("success with mountpoint", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error { return nil }
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
@@ -1447,6 +1461,24 @@ func TestUmountAndClose_luks(t *testing.T) {
 }
 
 func TestUmountAndClose_nonLuks(t *testing.T) {
+	t.Run("empty source is rejected before any probe", func(t *testing.T) {
+		var probes int
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			probes++
+			return nil, nil
+		}
+		checkMapped := func(name string) bool { return false }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, "")
+		if err == nil || !strings.Contains(err.Error(), "cannot determine name from empty source") {
+			t.Fatalf("expected an empty-source error, got %v", err)
+		}
+		if probes != 0 {
+			t.Errorf("no findmnt probe should run for an empty source, got %d", probes)
+		}
+	})
+
 	t.Run("skips cryptsetup calls", func(t *testing.T) {
 		var cryptCalls int
 		runCmd := func(name string, args ...string) error {
