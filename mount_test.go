@@ -51,6 +51,28 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("a failed luksClose on an early error path is surfaced", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				return errors.New("close fail")
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		orig := userHomeDir
+		userHomeDir = func() (string, error) { return "", nil }
+		t.Cleanup(func() { userHomeDir = orig })
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", "")
+		if err == nil || !strings.Contains(err.Error(), "absolute mount point") {
+			t.Fatalf("expected an absolute-mountpoint inference error, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "mapping left open") {
+			t.Errorf("a luksClose failure on the inference error path must be reported, got %v", err)
+		}
+	})
+
 	t.Run("success with mountpoint", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error { return nil }
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }

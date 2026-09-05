@@ -58,6 +58,19 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		}
 	}
 
+	// failOpen returns err, attaching the luksClose error when the mapping
+	// cannot be detached so an open mapping is never silently swallowed (a
+	// failed close after a re-mount attempt should be just as visible as it is
+	// on the mount-failure path).
+	failOpen := func(err error) error {
+		if encrypted {
+			if closeErr := luksClose(name); closeErr != nil {
+				return fmt.Errorf("%w (mapping left open: %v)", err, closeErr)
+			}
+		}
+		return err
+	}
+
 	if encrypted {
 		fmt.Printf("Opening LUKS device %s...\n", source)
 		args := []string{"luksOpen"}
@@ -73,17 +86,11 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 
 	if mountPoint == "" {
 		if name == "" {
-			if encrypted {
-				luksClose(name)
-			}
-			return fmt.Errorf("cannot infer mount point name from empty source")
+			return failOpen(fmt.Errorf("cannot infer mount point name from empty source"))
 		}
 		home, err := userHomeDir()
 		if err != nil {
-			if encrypted {
-				luksClose(name)
-			}
-			return fmt.Errorf("getting home directory: %w", err)
+			return failOpen(fmt.Errorf("getting home directory: %w", err))
 		}
 		mountPoint = filepath.Join(home, name)
 		// HOME could be empty or relative (e.g. an unset/shortened HOME in a
@@ -92,10 +99,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		// that depends on the caller's working directory.
 		absMp, absErr := filepath.Abs(mountPoint)
 		if absErr == nil && absMp != mountPoint {
-			if encrypted {
-				luksClose(name)
-			}
-			return fmt.Errorf("cannot infer an absolute mount point: HOME is %q", home)
+			return failOpen(fmt.Errorf("cannot infer an absolute mount point: HOME is %q", home))
 		}
 	}
 
@@ -106,10 +110,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	const maxMountPointCollisions = 16
 	for attempt := 0; ; attempt++ {
 		if attempt == maxMountPointCollisions {
-			if encrypted {
-				luksClose(name)
-			}
-			return fmt.Errorf("no free mount point: %s and its %d .mnt variants are all files", mountPointBase, maxMountPointCollisions)
+			return failOpen(fmt.Errorf("no free mount point: %s and its %d .mnt variants are all files", mountPointBase, maxMountPointCollisions))
 		}
 		fi, err := os.Stat(mountPoint)
 		if err == nil {
@@ -123,10 +124,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 			// A permission or other error probing the mount point. Surface it
 			// clearly rather than masking it behind a mkdir failure, and close
 			// a LUKS mapping that was already opened.
-			if encrypted {
-				luksClose(name)
-			}
-			return fmt.Errorf("checking mount point %s: %w", mountPoint, err)
+			return failOpen(fmt.Errorf("checking mount point %s: %w", mountPoint, err))
 		}
 		break
 	}
@@ -136,10 +134,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 
 	fmt.Printf("Creating mount point %s...\n", mountPoint)
 	if err := os.MkdirAll(mountPoint, 0755); err != nil {
-		if encrypted {
-			luksClose(name)
-		}
-		return fmt.Errorf("creating mountpoint: %w", err)
+		return failOpen(fmt.Errorf("creating mountpoint: %w", err))
 	}
 
 	device := source
