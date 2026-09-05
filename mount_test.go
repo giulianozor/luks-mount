@@ -108,6 +108,28 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("mount point collisions are bounded, not unbounded", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		dir := t.TempDir()
+		base := filepath.Join(dir, "mnt")
+		// base, mnt.mnt, mnt.mnt.mnt, ... up to one past the cap all exist as
+		// files, so the loop must stop and error instead of generating names
+		// forever.
+		for i := 0; i <= 16; i++ {
+			p := base + strings.Repeat(".mnt", i)
+			if err := os.WriteFile(p, []byte("block"), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", base)
+		if err == nil || !strings.Contains(err.Error(), "no free mount point") {
+			t.Fatalf("expected a bounded-collision error, got %v", err)
+		}
+	})
+
 	t.Run("mount point stat error surfaces clearly and closes mapping", func(t *testing.T) {
 		var closed bool
 		runCmd := func(name string, args ...string) error {

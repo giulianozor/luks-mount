@@ -99,7 +99,18 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		}
 	}
 
-	for {
+	// If the mount point path exists as a file (not a directory), fall back to
+	// <path>.mnt. Bound the number of fallbacks: an unbounded loop would never
+	// terminate if every <path>.mnt.mnt... candidate also exists as a file.
+	mountPointBase := mountPoint
+	const maxMountPointCollisions = 16
+	for attempt := 0; ; attempt++ {
+		if attempt == maxMountPointCollisions {
+			if encrypted {
+				luksClose(name)
+			}
+			return fmt.Errorf("no free mount point: %s and its %d .mnt variants are all files", mountPointBase, maxMountPointCollisions)
+		}
 		fi, err := os.Stat(mountPoint)
 		if err == nil {
 			if fi.IsDir() {
