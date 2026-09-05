@@ -821,6 +821,35 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("key file missing after dd is reported", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "c.img")
+		kf := filepath.Join(dir, "keyfile")
+
+		var zeroCalls int
+		run := func(name string, args ...string) error {
+			switch {
+			case name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom"):
+				// A silent dd failure: no key file is written.
+				return nil
+			case name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero"):
+				zeroCalls++
+				return os.WriteFile(img, make([]byte, 4096), 0644)
+			}
+			return nil
+		}
+		err := createContainer(run, run, img, "256M", "", kf, 512)
+		if err == nil || !strings.Contains(err.Error(), "missing after dd") {
+			t.Errorf("expected a missing-key-file error, got %v", err)
+		}
+		if zeroCalls != 0 {
+			t.Error("the container should not be written when its key was never stored")
+		}
+		if _, statErr := os.Stat(kf); !os.IsNotExist(statErr) {
+			t.Errorf("key file %q must not exist after a failed dd", kf)
+		}
+	})
+
 	t.Run("mkfs fails cleans up luksClose", func(t *testing.T) {
 		var calls []cmdCall
 		run := func(name string, args ...string) error {
