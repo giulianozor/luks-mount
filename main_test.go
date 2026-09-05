@@ -118,6 +118,10 @@ func TestRunMain(t *testing.T) {
 		// privileged probe or command runs.
 		{"expand missing container", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G"}, 1, "stat /nonexistent/lmount-test.img", false},
 		{"umount missing source", []string{"-u", "/nonexistent/lmount-test.img"}, 1, "does not exist", false},
+		{"expand with positional argument", []string{"-x", "/nonexistent/lmount-test.img", "-xs", "1G", "extra"}, 1, "unexpected positional argument", false},
+		{"create with positional argument", []string{"-c", "img", "-cs", "32M", "extra"}, 1, "unexpected positional argument", false},
+		{"mount with positional argument", []string{"-s", "/dev/__test_dev__", "extra"}, 1, "unexpected positional argument", false},
+		{"create with an invalid container name", []string{"-c", "bad name.txt", "-cs", "32M"}, 1, "invalid device-mapper name", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -135,6 +139,48 @@ func TestRunMain(t *testing.T) {
 				t.Errorf("runMain(%v) output missing %q, got %q", tc.args, tc.want, got)
 			}
 		})
+	}
+}
+
+func TestRunMainNonLinuxExits(t *testing.T) {
+	oldGOOS := goos
+	goos = "darwin"
+	defer func() { goos = oldGOOS }()
+
+	code := captureStderr(t, func() {
+		if got := runMain([]string{"-s", "/dev/x"}); got != 1 {
+			t.Errorf("runMain on darwin = %d, want 1", got)
+		}
+	})
+	if !strings.Contains(code, "Linux-only") {
+		t.Errorf("expected a Linux-only error, got %q", code)
+	}
+}
+
+func TestRunMainExpandsMountPointHome(t *testing.T) {
+	oldGOOS := goos
+	goos = "linux"
+	defer func() { goos = oldGOOS }()
+
+	oldHome, hadHome := os.LookupEnv("HOME")
+	if err := os.Unsetenv("HOME"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if hadHome {
+			os.Setenv("HOME", oldHome)
+		} else {
+			os.Unsetenv("HOME")
+		}
+	}()
+
+	code := captureStderr(t, func() {
+		if got := runMain([]string{"-s", "/nonexistent/lmount-test.img", "-m", "~/data"}); got != 1 {
+			t.Errorf("runMain with unset HOME = %d, want 1", got)
+		}
+	})
+	if !strings.Contains(code, "expanding") || !strings.Contains(code, "home directory") {
+		t.Errorf("expected a home-directory expansion error, got %q", code)
 	}
 }
 
