@@ -3,10 +3,37 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestDirectCommandWrappers(t *testing.T) {
+	if err := runDirect("true"); err != nil {
+		t.Errorf("runDirect(true) = %v, want nil", err)
+	}
+	if err := runDirect("false"); err == nil {
+		t.Error("runDirect(false) should report the non-zero exit")
+	}
+	if err := runDirect("sh", "-c", "exit 3"); err == nil {
+		t.Error("runDirect should surface a non-zero exit status")
+	}
+
+	out, err := runOutputDirect("echo", "ok")
+	if err != nil {
+		t.Errorf("runOutputDirect(echo ok) unexpected error: %v", err)
+	}
+	if string(out) != "ok\n" {
+		t.Errorf("runOutputDirect(echo ok) = %q, want %q", out, "ok\n")
+	}
+
+	if _, err := runOutputDirect("lmount-definitely-not-a-command-xyz"); err == nil {
+		t.Error("runOutputDirect on a missing command should error")
+	} else if _, ok := err.(*exec.Error); !ok {
+		t.Errorf("expected an exec.Error for a missing command, got %T: %v", err, err)
+	}
+}
 
 func TestSrcName(t *testing.T) {
 	tests := []struct {
