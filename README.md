@@ -65,7 +65,7 @@ lmount -s <source> -k <keyfile> -m <mountpoint>
 ```
 
 - `-s` / `--source` — path to a block device (e.g. `sda1` or `/dev/sda1`) or a file-backed container.
-- `-k` / `--key` — optional path to a LUKS key file. It is only valid when the source is detected as LUKS; passing it for a non-LUKS (or nonexistent) source is an error. The key file must exist, be a regular file, and be non-empty; the source itself (even via a relative or symlinked spelling) is rejected as a key.
+- `-k` / `--key` — optional path to a LUKS key file. It is only valid when the source is detected as LUKS; passing it for a non-LUKS (or nonexistent) source is an error. The key file must exist, be a regular file, and be non-empty; a character device such as `/dev/random` (fresh bytes on every read, so it can never authenticate a keyslot) is rejected up front, while a block device such as a raw key partition stays allowed. The source itself (even via a relative or symlinked spelling) is rejected as a key.
 - Path arguments (`-s`, `-u`, `-m`, `-k`, `-c`, `-x`, `-ck`) expand a leading `~/` (or a bare `~`) to your home directory, so a shell-quoted `-m '~/data'` never creates a literal `~` directory and `-c '~/vault.img'` creates the container in your home.
 - `-m` / `--mount` — mount point (default: `~/<source-basename>`). If a file already exists at the path, `.mnt` is appended automatically (bounded to 16 candidates). Mounting at the filesystem root (`-m /`) and mounting under a path that is actually a file are refused.
 
@@ -104,7 +104,7 @@ Minimum container size is 32M.
 - `-cks` / `--key-size` — key file size in bytes (default: 512). Only valid when `-ck` is also used.
 - `-k` / `--key` — an existing key file to key the container from, instead of `-ck`. `-k` and `-ck` are mutually exclusive.
 
-The key file must not alias the container path, must not already exist (for `-ck`), and must be a non-empty regular file (for `-k`). The filesystem root cannot be used as a container name, and a key file that is a directory, FIFO, or socket is rejected before anything is created.
+The key file must not alias the container path, must not already exist (for `-ck`), and must be a non-empty regular file (for `-k`). The filesystem root cannot be used as a container name, and a key file that is a directory, FIFO, socket, or character device is rejected before anything is created. A container whose `luksOpen` mapping name is already in use is rejected before any file is allocated.
 
 `-c` cannot be combined with `-s`, `-u`, or `-x` (the operation flags are mutually exclusive).
 
