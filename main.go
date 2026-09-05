@@ -232,7 +232,15 @@ func runMain(args []string) int {
 	}
 
 	fullSrc := resolveSource(source)
-	if err := openAndMount(runCmd, runOutput, fullSrc, *keyFile, *mountPoint); err != nil {
+	mp := *mountPoint
+	if mp != "" {
+		var err error
+		mp, err = expandHome(mp)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if err := openAndMount(runCmd, runOutput, fullSrc, *keyFile, mp); err != nil {
 		return fail(err)
 	}
 	return 0

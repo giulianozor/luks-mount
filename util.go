@@ -118,6 +118,25 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
+// expandHome resolves a leading "~/" (or a bare "~") in a user-supplied path
+// to the invoking user's home directory, so a shell-quoted argument like
+// "-m '~/data'" mounts where the user clearly intended instead of creating a
+// literal directory named "~" in the current working directory. All other
+// paths, including relative ones, are returned unchanged.
+func expandHome(p string) (string, error) {
+	if p != "~" && !strings.HasPrefix(p, "~/") {
+		return p, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("expanding %q: getting home directory: %w", p, err)
+	}
+	if p == "~" {
+		return home, nil
+	}
+	return filepath.Join(home, p[2:]), nil
+}
+
 // resolveKeySize picks the effective key-file size from the -cks/--key-size
 // short and long aliases. When both are set the short alias wins, matching the
 // firstNonEmpty short-alias-wins rule used for the other merged flag pairs

@@ -56,6 +56,54 @@ func TestResolveSource(t *testing.T) {
 	})
 }
 
+func TestExpandHome(t *testing.T) {
+	oldHome, hadHome := os.LookupEnv("HOME")
+	home := filepath.Join(t.TempDir(), "homedir")
+	if err := os.MkdirAll(home, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if hadHome {
+			os.Setenv("HOME", oldHome)
+		} else {
+			os.Unsetenv("HOME")
+		}
+	}()
+
+	tests := []struct {
+		in   string
+		want string
+		err  bool
+	}{
+		{"~/data", filepath.Join(home, "data"), false},
+		{"~/a/b", filepath.Join(home, "a/b"), false},
+		{"~", home, false},
+		{"relative/path", "relative/path", false},
+		{"/absolute/path", "/absolute/path", false},
+		{"", "", false},
+		{"~notme", "~notme", false},
+	}
+	for _, tt := range tests {
+		got, err := expandHome(tt.in)
+		if tt.err {
+			if err == nil {
+				t.Errorf("expandHome(%q) expected an error, got %q", tt.in, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("expandHome(%q) unexpected error: %v", tt.in, err)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("expandHome(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestCheckMapperName(t *testing.T) {
 	tests := []struct {
 		name string
