@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -141,6 +142,7 @@ func TestCalcBlockSize(t *testing.T) {
 		total int64
 		want  int64
 	}{
+		{"zero clamps to 1M", 0, 1 * miB},
 		{"under 1M is clamped to 1M", 1*miB - 1, 1 * miB},
 		{"small tier uses whole MiB up to 32", 1 * miB, 1 * miB},
 		{"small tier with remainder", 33 * miB, 32 * miB},
@@ -313,6 +315,15 @@ func TestParseSize(t *testing.T) {
 			} else if got != tt.want {
 				t.Errorf("parseSize(%q) = %d, want %d", tt.input, got, tt.want)
 			}
+		}
+	}
+}
+
+func TestParseSizeRejectsByteOverflow(t *testing.T) {
+	for _, input := range []string{"8589934592G", "8796093022208M"} {
+		_, err := parseSize(input)
+		if err == nil || !strings.Contains(err.Error(), "too large") {
+			t.Errorf("parseSize(%q) expected a too-large error, got %v", input, err)
 		}
 	}
 }
