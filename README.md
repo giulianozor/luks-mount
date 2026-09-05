@@ -101,10 +101,10 @@ Minimum container size is 32M.
 - `-c` / `--create` — name of the container file to create.
 - `-cs` / `--size` — size with suffix `M` or `G` (e.g. `100M`, `2G`). The block size is chosen by tier to balance speed and waste: ≤1 GiB uses 1–32 MiB blocks, 1–10 GiB uses 256 MiB, 10–100 GiB uses 512 MiB, >100 GiB uses 1024 MiB. The image is allocated to exactly the requested size (a `truncate` extension is used when the size is not a multiple of the tier's block size).
 - `-ck` / `--create-key-file` — optional path for a key file. When set, a random key file is generated (mode `0600`, owner-only) and installed as the container's initial key. The file's size is verified after generation, and a too-short file aborts the create.
-- `-cks` / `--key-size` — key file size in bytes (default: 512). Only valid when `-ck` is also used.
+- `-cks` / `--key-size` — key file size in bytes (default: 512). Only valid when `-ck` is also used, and must be a multiple of 8.
 - `-k` / `--key` — an existing key file to key the container from, instead of `-ck`. `-k` and `-ck` are mutually exclusive.
 
-The key file must not alias the container path, must not already exist (for `-ck`), and must be a non-empty regular file (for `-k`). The filesystem root cannot be used as a container name, and a key file that is a directory, FIFO, socket, or character device is rejected before anything is created. A container whose `luksOpen` mapping name is already in use is rejected before any file is allocated.
+The key file must not alias the container path, must not already exist (for `-ck`), and must be a non-empty regular file (for `-k`). The filesystem root cannot be used as a container name, and a container name that contains whitespace or `/`, is `.` or `..`, or starts with a dash (which cryptsetup and mount would parse as an option) is rejected before anything is created. A key file that is a directory, FIFO, socket, or character device is likewise rejected up front, as is a container whose `luksOpen` mapping name is already in use (before any file is allocated).
 
 `-c` cannot be combined with `-s`, `-u`, or `-x` (the operation flags are mutually exclusive).
 
