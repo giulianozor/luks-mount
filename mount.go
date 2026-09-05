@@ -62,6 +62,15 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	source = trimTrailingSeparators(source)
 	name := srcName(source)
 
+	// A source spelled with a leading dash ("-evil.img") would be parsed as an
+	// option by mount (and by cryptsetup luksOpen for a LUKS header), failing
+	// with a cryptic error instead of mounting the file. No legitimate path
+	// starts with a dash (absolute "./", relative, and /dev paths start with
+	// "/", "." or ".."), so reject it up front with a hint.
+	if strings.HasPrefix(source, "-") {
+		return fmt.Errorf("source %q starts with a dash and would be parsed as an option; use ./%s", source, source)
+	}
+
 	// Normalize a trailing separator on an existing key file the same way.
 	// Without this, os.Stat treats "…/key/" as a directory and checkKeyFile
 	// rejects a valid key with a misleading "not a directory" error.

@@ -1959,3 +1959,22 @@ func TestUmountAndClosePartialFailureAccumulates(t *testing.T) {
 		t.Errorf("expected both targets to be attempted, got %v", umounts)
 	}
 }
+
+func TestOpenAndMountLeadingDashSource(t *testing.T) {
+	var runs int
+	run := func(name string, args ...string) error {
+		runs++
+		return nil
+	}
+	out := func(name string, args ...string) ([]byte, error) {
+		return nil, fmt.Errorf("unexpected output probe")
+	}
+
+	err := openAndMount(run, out, "-evil.img", "", "")
+	if err == nil || !strings.Contains(err.Error(), "starts with a dash") {
+		t.Fatalf("expected a leading-dash rejection, got %v", err)
+	}
+	if runs != 0 {
+		t.Errorf("no command should run for a leading-dash source, saw %d", runs)
+	}
+}
