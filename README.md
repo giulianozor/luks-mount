@@ -73,7 +73,7 @@ Sources and mount points that are directories, FIFOs, sockets, empty files, or m
 
 Source resolution: if the source path does not exist as a file or directory, `/dev/<source>` is tried (so bare names like `sda1` work). For valid sources, LUKS encryption is auto-detected; nonexistent paths are rejected with a clear error before anything is mounted.
 
-Encryption is auto-detected by reading the LUKS header magic directly when the source can be read as a file. Sources that cannot be read locally (e.g. block devices behind sudo) fall back to `cryptsetup isLuks`. LUKS sources are opened with `luksOpen` before mounting; plain sources are mounted directly.
+Encryption is auto-detected by reading the LUKS header magic directly when the source can be read as a file. Sources that cannot be read locally (e.g. block devices behind sudo) fall back to `cryptsetup isLuks`. LUKS sources are opened with `luksOpen` before mounting; plain sources are mounted directly. `luksOpen` is kernel-synchronous, but udev may take a moment longer to materialize the `/dev/mapper/<name>` node, so `lmount` polls for it briefly and warns (rather than failing cryptically) if the node still has not appeared.
 
 ### Unmount
 
