@@ -276,6 +276,14 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 		return err
 	}
 
+	// Growing (truncate) the backing file while its LUKS mapping is still
+	// open and mounted would extend the file underneath a live filesystem and
+	// can leave device-mapper in an inconsistent state even if the size is
+	// later rolled back. Refuse up front, mirroring openAndMount's guard.
+	if mapperProbe(srcName(filename)) {
+		return fmt.Errorf("container %s is mounted as /dev/mapper/%s; unmount it before expanding", filename, srcName(filename))
+	}
+
 	if keyFile != "" {
 		if err := checkKeyFile(keyFile, "key file"); err != nil {
 			return err

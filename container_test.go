@@ -842,6 +842,31 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects an already-open mapping before growing the file", func(t *testing.T) {
+		var runs []cmdCall
+		run := func(name string, args ...string) error {
+			runs = append(runs, cmdCall{name, args})
+			return nil
+		}
+
+		orig := mapperProbe
+		mapperProbe = func(string) bool { return true }
+		t.Cleanup(func() { mapperProbe = orig })
+
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "unmount it before expanding") {
+			t.Errorf("expected an already-mounted error, got %v", err)
+		}
+		for _, r := range runs {
+			if r.name == "truncate" {
+				t.Errorf("truncate must not run while the mapping is open, got %v", runs)
+			}
+		}
+	})
+
 	t.Run("normalizes a trailing slash on the container file", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")
