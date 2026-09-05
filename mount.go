@@ -11,6 +11,13 @@ import (
 
 var userHomeDir = os.UserHomeDir
 
+// mapperProbe reports whether a /dev/mapper/NAME mapping already exists; a
+// variable so tests can simulate an open mapping without touching /dev/mapper.
+var mapperProbe = func(name string) bool {
+	_, err := os.Stat("/dev/mapper/" + name)
+	return err == nil
+}
+
 func openAndMount(runCmd func(name string, args ...string) error, runOutput func(name string, args ...string) ([]byte, error), source, keyFile, mountPoint string) error {
 	isLuks := func(source string) bool {
 		_, err := runOutput("cryptsetup", "isLuks", source)
@@ -94,6 +101,11 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	}
 
 	if encrypted {
+		if mapperProbe(name) {
+			// The mapping is already open; luksOpen would only fail with a
+			// cryptic "already exists" after a wasteful privileged attempt.
+			return fmt.Errorf("source %s is already open as /dev/mapper/%s", source, name)
+		}
 		fmt.Printf("Opening LUKS device %s...\n", source)
 		args := []string{"luksOpen"}
 		if keyFile != "" {

@@ -361,6 +361,32 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("reports a source that is already open instead of luksOpen", func(t *testing.T) {
+		var luksOpenCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		orig := mapperProbe
+		mapperProbe = func(string) bool { return true }
+		t.Cleanup(func() { mapperProbe = orig })
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", filepath.Join(t.TempDir(), "mnt"))
+		if err == nil || !strings.Contains(err.Error(), "already open") {
+			t.Errorf("expected an already-open error, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "/dev/mapper/__test_dev__") {
+			t.Errorf("expected the mapping path in the error, got %v", err)
+		}
+		if luksOpenCalls != 0 {
+			t.Errorf("luksOpen should not be attempted for an already-open source, got %d calls", luksOpenCalls)
+		}
+	})
+
 	t.Run("cryptsetup error", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error {
 			if name == "cryptsetup" {
