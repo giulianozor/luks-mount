@@ -128,6 +128,29 @@ func TestRemoveIfEmpty(t *testing.T) {
 	})
 }
 
+func TestResolveKeySize(t *testing.T) {
+	tests := []struct {
+		name            string
+		shortSet, longSet bool
+		shortVal, longVal int
+		want             int
+		wantSet          bool
+	}{
+		{"neither set", false, false, 128, 256, 512, false},
+		{"short only", true, false, 128, 256, 128, true},
+		{"long only", false, true, 128, 256, 256, true},
+		{"both set, short wins", true, true, 128, 256, 128, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, gotSet := resolveKeySize(tt.shortSet, tt.shortVal, tt.longSet, tt.longVal, 512)
+			if got != tt.want || gotSet != tt.wantSet {
+				t.Errorf("resolveKeySize() = (%d, %v), want (%d, %v)", got, gotSet, tt.want, tt.wantSet)
+			}
+		})
+	}
+}
+
 func TestParseSize(t *testing.T) {
 	tests := []struct {
 		input string

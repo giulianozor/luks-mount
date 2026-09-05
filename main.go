@@ -107,18 +107,17 @@ func main() {
 	createVal := firstNonEmpty(*createFlag, *createFlagLong)
 	sizeVal := firstNonEmpty(*sizeFlag, *sizeFlagLong)
 	keyFileVal := firstNonEmpty(*createKeyFile, *createKeyFileLong)
-	keySizeVal := 512
-	keySizeSet := false
+	shortKeySizeSet := false
+	longKeySizeSet := false
 	flag.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "cks":
-			keySizeVal = *createKeySize
-			keySizeSet = true
+			shortKeySizeSet = true
 		case "key-size":
-			keySizeVal = *createKeySizeLong
-			keySizeSet = true
+			longKeySizeSet = true
 		}
 	})
+	keySizeVal, keySizeSet := resolveKeySize(shortKeySizeSet, *createKeySize, longKeySizeSet, *createKeySizeLong, 512)
 
 	if sizeVal != "" && createVal == "" {
 		fmt.Fprintf(os.Stderr, "Error: -cs/--size is only valid with -c/--create\n")

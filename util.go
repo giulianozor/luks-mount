@@ -93,6 +93,20 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
+// resolveKeySize picks the effective key-file size from the -cks/--key-size
+// short and long aliases. When both are set the short alias wins, matching the
+// firstNonEmpty short-alias-wins rule used for the other merged flag pairs
+// (rather than relying on flag.Visit's lexicographic iteration order).
+func resolveKeySize(shortSet bool, shortVal int, longSet bool, longVal int, dflt int) (int, bool) {
+	if shortSet {
+		return shortVal, true
+	}
+	if longSet {
+		return longVal, true
+	}
+	return dflt, false
+}
+
 // checkKeyFile verifies that path exists and is not a directory, so a LUKS key
 // (passphrase-less) fails with a clear message before any mapping is opened or
 // a container file is grown rather than with a cryptic cryptsetup error.
