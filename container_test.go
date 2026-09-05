@@ -61,7 +61,11 @@ func TestCreateContainer(t *testing.T) {
 		}
 
 		dir := t.TempDir()
-		img := filepath.Join(dir, "subdir", "container.img")
+		subdir := filepath.Join(dir, "subdir")
+		if err := os.MkdirAll(subdir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		img := filepath.Join(subdir, "container.img")
 		err := createContainer(run, run, img, "256M", "", "", 512)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -237,6 +241,24 @@ func TestCreateContainer(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "checking container path") {
 			t.Errorf("expected a checking-container-path error, got %v", err)
+		}
+	})
+
+	t.Run("missing container parent directory is rejected up front", func(t *testing.T) {
+		var cryptCalls int
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" {
+				cryptCalls++
+			}
+			return nil
+		}
+		img := filepath.Join(t.TempDir(), "missing-subdir", "c.img")
+		err := createContainer(run, run, img, "256M", "", filepath.Join(t.TempDir(), "keyfile"), 512)
+		if err == nil || !strings.Contains(err.Error(), "container directory") {
+			t.Errorf("expected a container-directory error, got %v", err)
+		}
+		if cryptCalls != 0 {
+			t.Errorf("no cryptsetup work should happen when the container directory is missing, got %d calls", cryptCalls)
 		}
 	})
 

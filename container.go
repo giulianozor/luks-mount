@@ -35,6 +35,20 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("checking container path %s: %w", name, err)
 	}
 
+	// The container is written with dd, which cannot create missing parent
+	// directories; failing here with a clear message beats a cryptic dd error
+	// after a generated key file has already been created.
+	if parent := filepath.Dir(name); parent != "" {
+		if fi, err := os.Stat(parent); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("container directory %s does not exist", parent)
+			}
+			return fmt.Errorf("checking container directory %s: %w", parent, err)
+		} else if !fi.IsDir() {
+			return fmt.Errorf("container parent %s is not a directory", parent)
+		}
+	}
+
 	if keyFile != "" {
 		if _, err := os.Stat(keyFile); err == nil {
 			return fmt.Errorf("key file %q already exists", keyFile)
