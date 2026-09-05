@@ -46,6 +46,37 @@ func makeFIFO(t *testing.T) string {
 	return path
 }
 
+func TestParseFindmntTargets(t *testing.T) {
+	tests := []struct {
+		name string
+		out  []byte
+		want []string
+	}{
+		{"no output yields no targets", []byte(""), []string{}},
+		{"trailing newline is trimmed", []byte("/mnt/a\n"), []string{"/mnt/a"}},
+		{"a single target", []byte("/mnt/a"), []string{"/mnt/a"}},
+		{"multiple targets keep their order", []byte("/mnt/a\n/mnt/b\n"), []string{"/mnt/a", "/mnt/b"}},
+		{"CRLF line endings are normalized", []byte("/mnt/a\r\n/mnt/b\r\n"), []string{"/mnt/a", "/mnt/b"}},
+		{"indented lines are trimmed", []byte("  /mnt/a\n\t/mnt/b\n"), []string{"/mnt/a", "/mnt/b"}},
+		{"empty lines are skipped", []byte("\n/mnt/a\n\n/mnt/b\n"), []string{"/mnt/a", "/mnt/b"}},
+		{"duplicate targets are deduped", []byte("/mnt/a\n/mnt/a\n/mnt/b\n/mnt/b\n"), []string{"/mnt/a", "/mnt/b"}},
+		{"duplicates with whitespace variants collide", []byte("/mnt/a\n /mnt/a\n"), []string{"/mnt/a"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseFindmntTargets(tt.out)
+			if len(got) != len(tt.want) {
+				t.Fatalf("parseFindmntTargets(%q) = %v, want %v", tt.out, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("parseFindmntTargets(%q) = %v, want %v", tt.out, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
 func TestCheckKeyFile(t *testing.T) {
 	t.Run("accepts a regular non-empty file", func(t *testing.T) {
 		kf := filepath.Join(t.TempDir(), "key")

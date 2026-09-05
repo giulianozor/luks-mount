@@ -234,6 +234,31 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	return nil
 }
 
+// parseFindmntTargets converts findmnt's -o TARGET output into a deduplicated
+// list of mount-point targets. findmnt may repeat a TARGET when multiple
+// stacked/bind mounts share a mount point; unmounting (and then removing) the
+// same path twice only produces a spurious second-umount error, so each target
+// is returned once.
+func parseFindmntTargets(out []byte) []string {
+	mounts := strings.Split(strings.TrimSpace(string(out)), "\n")
+	seen := make(map[string]struct{}, len(mounts))
+	targets := make([]string, 0, len(mounts))
+	for _, m := range mounts {
+		// Trim whitespace so a stray \r (CRLF) or indented line cannot produce
+		// a failing umount/rmdir on a spurious path.
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		if _, ok := seen[m]; ok {
+			continue
+		}
+		seen[m] = struct{}{}
+		targets = append(targets, m)
+	}
+	return targets
+}
+
 func umountAndClose(checkMapped func(name string) bool, runCmd func(name string, args ...string) error, runOutputDirect func(name string, args ...string) ([]byte, error), source string) error {
 	luksClose := func(name string) error {
 		return runCmd("cryptsetup", "luksClose", name)
@@ -306,25 +331,7 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 		return fmt.Errorf("findmnt failed for %s: %v", search, findErr)
 	}
 	var errs []string
-	mounts := strings.Split(strings.TrimSpace(string(out)), "\n")
-	// findmnt may repeat a TARGET when multiple stacked/bind mounts share a
-	// mount point. Unmounting (and then removing) the same path twice only
-	// produces a spurious second-umount error, so dedupe first.
-	seen := make(map[string]struct{}, len(mounts))
-	targets := make([]string, 0, len(mounts))
-	for _, m := range mounts {
-		// Trim whitespace so a stray \r (CRLF) or indented line cannot produce
-		// a failing umount/rmdir on a spurious path.
-		m = strings.TrimSpace(m)
-		if m == "" {
-			continue
-		}
-		if _, ok := seen[m]; ok {
-			continue
-		}
-		seen[m] = struct{}{}
-		targets = append(targets, m)
-	}
+	targets := parseFindmntTargets(out)
 	// Unmount deeper (nested) targets before shallower ones: umounting a parent
 	// path while it still holds a child mount fails with "target is busy".
 	// findmnt returns mounts in arbitrary order, so sort longest-path first. This
