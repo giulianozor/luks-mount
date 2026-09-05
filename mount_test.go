@@ -490,6 +490,34 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a directory source before mounting", func(t *testing.T) {
+		var mountCalls, cryptCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				mountCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			if name == "cryptsetup" {
+				cryptCalls++
+			}
+			return nil, errors.New("not luks")
+		}
+
+		dir := t.TempDir()
+		err := openAndMount(runCmd, runOutput, dir, "", "")
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("expected a directory-source error, got %v", err)
+		}
+		if mountCalls != 0 {
+			t.Errorf("mount should not be attempted for a directory source, got %d calls", mountCalls)
+		}
+		if cryptCalls != 0 {
+			t.Errorf("cryptsetup should not be probed for a directory source, got %d calls", cryptCalls)
+		}
+	})
+
 	t.Run("rejects a nonexistent plain file source before mounting", func(t *testing.T) {
 		var mountCalls int
 		runCmd := func(name string, args ...string) error {

@@ -27,11 +27,18 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	// "not LUKS" error, and wastes a privileged cryptsetup probe (and possibly a
 	// sudo prompt) on a path that can never be mounted.
 	if !strings.HasPrefix(source, "/dev/") && source != "" {
-		if _, err := os.Stat(source); os.IsNotExist(err) {
-			// A non-device source that does not exist is almost certainly a typo.
-			// Reject it up front rather than letting cryptsetup/mount fail with a
-			// cryptic error, and never leave a LUKS mapping open for nothing.
-			return fmt.Errorf("source %s does not exist", source)
+		fi, err := os.Stat(source)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// A non-device source that does not exist is almost certainly a typo.
+				// Reject it up front rather than letting cryptsetup/mount fail with a
+				// cryptic error, and never leave a LUKS mapping open for nothing.
+				return fmt.Errorf("source %s does not exist", source)
+			}
+		} else if fi.IsDir() {
+			// A directory can never be a mount source (lmount does no bind
+			// mounts); rejecting it up front is clearer than mount's own failure.
+			return fmt.Errorf("source %s is a directory, not a device or file", source)
 		}
 	}
 
