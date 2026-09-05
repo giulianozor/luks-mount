@@ -1908,3 +1908,54 @@ func TestUmountAndCloseDevDirectorySource(t *testing.T) {
 		t.Errorf("expected no findmnt/unmount calls, saw %v", seen)
 	}
 }
+
+func TestUmountAndClosePartialFailureAccumulates(t *testing.T) {
+	dir := t.TempDir()
+	mpA := filepath.Join(dir, "a")
+	mpB := filepath.Join(dir, "b")
+	if err := os.MkdirAll(mpA, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(mpB, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	var closed bool
+	var umounts []string
+	runCmd := func(name string, args ...string) error {
+		switch name {
+		case "umount":
+			umounts = append(umounts, args[0])
+			if args[0] == mpA {
+				return errors.New("busy")
+			}
+		case "cryptsetup":
+			if len(args) > 0 && args[0] == "luksClose" {
+				closed = true
+			}
+		}
+		return nil
+	}
+	runOutput := func(name string, args ...string) ([]byte, error) {
+		return []byte(mpA + "\n" + mpB), nil
+	}
+	checkMapped := func(name string) bool { return true }
+
+	err := umountAndClose(checkMapped, runCmd, runOutput, "/dev/__test_dev__")
+	if err == nil || !strings.Contains(err.Error(), "cleanup errors") {
+		t.Fatalf("expected accumulated cleanup errors, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "umount "+mpA) {
+		t.Errorf("expected the failing umount to be named, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "LUKS mapping __test_dev__ left open") {
+		t.Errorf("expected the open mapping to be called out, got %v", err)
+	}
+	if closed {
+		t.Error("luksClose must not run while a target is still mounted")
+	}
+	// B was unmounted successfully; A's failure must not stop the loop.
+	if len(umounts) != 2 {
+		t.Errorf("expected both targets to be attempted, got %v", umounts)
+	}
+}
