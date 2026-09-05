@@ -537,6 +537,40 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("refuses to mount at the filesystem root", func(t *testing.T) {
+		var mountCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				mountCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", "/")
+		if err == nil || !strings.Contains(err.Error(), "filesystem root") {
+			t.Errorf("expected a root-mount refusal, got %v", err)
+		}
+		if mountCalls != 0 {
+			t.Errorf("mount must not be attempted at the root, got %d calls", mountCalls)
+		}
+	})
+
+	t.Run("refuses to mount at the root for a slash-collapsing spelling", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				t.Error("mount must not be attempted at the root")
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", "//")
+		if err == nil || !strings.Contains(err.Error(), "filesystem root") {
+			t.Errorf("expected a root-mount refusal for //, got %v", err)
+		}
+	})
+
 	t.Run("mount error surfaces a luksClose failure", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error {
 			if name == "mount" {

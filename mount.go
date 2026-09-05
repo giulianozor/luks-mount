@@ -147,6 +147,13 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		}
 	}
 
+	// A mount at the filesystem root would (if it succeeded) replace the root
+	// filesystem view and, worse, chown the root directory to the invoking
+	// user. Refuse up front; Clean() also catches path spellings like "//".
+	if mountPoint != "" && filepath.Clean(mountPoint) == "/" {
+		return failOpen(fmt.Errorf("refusing to mount a source at the filesystem root"))
+	}
+
 	// If the mount point path exists as a file (not a directory), fall back to
 	// <path>.mnt. Bound the number of fallbacks: an unbounded loop would never
 	// terminate if every <path>.mnt.mnt... candidate also exists as a file.
