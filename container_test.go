@@ -329,6 +329,33 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts a trailing-slash existing key file", func(t *testing.T) {
+		var calls []cmdCall
+		run := func(name string, args ...string) error {
+			calls = append(calls, cmdCall{name, args})
+			return nil
+		}
+
+		dir := t.TempDir()
+		img := filepath.Join(dir, "container.img")
+		kf := filepath.Join(dir, "existing.key")
+		os.WriteFile(kf, []byte("keydata"), 0644)
+		err := createContainer(run, run, img, "256M", kf+string(filepath.Separator), "", 512)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		foundKey := false
+		for i, a := range calls[1].args {
+			if a == "--key-file" && i+1 < len(calls[1].args) && calls[1].args[i+1] == kf {
+				foundKey = true
+				break
+			}
+		}
+		if !foundKey {
+			t.Errorf("luksFormat missing normalized --key-file %q, got %v", kf, calls[1].args)
+		}
+	})
+
 	t.Run("rejects both a generated and an existing key file", func(t *testing.T) {
 		var calls []cmdCall
 		run := func(name string, args ...string) error {
@@ -1171,6 +1198,37 @@ func TestExpandContainer(t *testing.T) {
 		}
 		if !foundKey {
 			t.Errorf("luksOpen missing --key-file %q: %v", kf, luksOpenCall.args)
+		}
+	})
+
+	t.Run("accepts a trailing-slash key file path", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+		kf := filepath.Join(dir, "key")
+		if err := os.WriteFile(kf, []byte("keymaterial"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		var luksOpenArgs []string
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenArgs = args
+			}
+			return nil
+		}
+		err := expandContainer(run, run, f, "256M", kf+string(filepath.Separator))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		foundKey := false
+		for i, a := range luksOpenArgs {
+			if a == "--key-file" && i+1 < len(luksOpenArgs) && luksOpenArgs[i+1] == kf {
+				foundKey = true
+				break
+			}
+		}
+		if !foundKey {
+			t.Errorf("luksOpen missing normalized --key-file %q: %v", kf, luksOpenArgs)
 		}
 	})
 

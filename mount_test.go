@@ -352,6 +352,30 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts a trailing-slash key file path", func(t *testing.T) {
+		var luksOpenArgs []string
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenArgs = args
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		kf := filepath.Join(t.TempDir(), "key")
+		if err := os.WriteFile(kf, []byte("keymaterial"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		mp := filepath.Join(t.TempDir(), "mnt")
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", kf+string(filepath.Separator), mp)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(luksOpenArgs) < 3 || luksOpenArgs[2] != kf {
+			t.Errorf("trailing-slash key file not normalized in --key-file, got %v", luksOpenArgs)
+		}
+	})
+
 	t.Run("sniffs a LUKS-magic file without probing cryptsetup", func(t *testing.T) {
 		dir := t.TempDir()
 		src := filepath.Join(dir, "luks.img")

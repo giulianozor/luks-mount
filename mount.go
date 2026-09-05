@@ -32,6 +32,11 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	source = trimTrailingSeparators(source)
 	name := srcName(source)
 
+	// Normalize a trailing separator on an existing key file the same way.
+	// Without this, os.Stat treats "…/key/" as a directory and checkKeyFile
+	// rejects a valid key with a misleading "not a directory" error.
+	keyFile = trimTrailingSeparators(keyFile)
+
 	// Validate the source exists before probing LUKS: isLuks on a missing path
 	// reports "not LUKS", which would otherwise mask a typo'd source path as a
 	// "not LUKS" error, and wastes a privileged cryptsetup probe (and possibly a

@@ -30,6 +30,12 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		return err
 	}
 
+	// Normalize trailing separators on both key paths so a shell-completed
+	// "…/key/" is not read as a directory and rejected with a misleading
+	// "not a directory" error; the container name is normalized by main.
+	existingKeyFile = trimTrailingSeparators(existingKeyFile)
+	keyFile = trimTrailingSeparators(keyFile)
+
 	// main() already rejects the combination, but enforce it here too so a
 	// direct caller cannot silently prefer one key over the other.
 	if keyFile != "" && existingKeyFile != "" {
@@ -275,6 +281,10 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	// completion) would make os.Stat/open treat the file as a directory; match
 	// the normalization openAndMount/umountAndClose apply to their sources.
 	filename = trimTrailingSeparators(filename)
+	// Normalize a trailing separator on an existing key file the same way path
+	// arguments are normalized elsewhere; os.Stat would otherwise read it as a
+	// directory and reject a valid key with a misleading "not a directory".
+	keyFile = trimTrailingSeparators(keyFile)
 
 	// The root filesystem is never a container; say so rather than the generic
 	// "not a regular file" a stat of "/" would produce.
