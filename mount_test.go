@@ -537,6 +537,34 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("mount point under a file is rejected up front", func(t *testing.T) {
+		var mountCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				mountCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		file := filepath.Join(t.TempDir(), "afile")
+		if err := os.WriteFile(file, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		mp := filepath.Join(file, "child")
+
+		err := openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", mp)
+		if err == nil {
+			t.Fatal("expected an error when the mount point parent is a file")
+		}
+		if !strings.Contains(err.Error(), "checking mount point") {
+			t.Errorf("expected a checking-mount-point error, got %v", err)
+		}
+		if mountCalls != 0 {
+			t.Errorf("mount must not be attempted under a file, got %d calls", mountCalls)
+		}
+	})
+
 	t.Run("refuses to mount at the filesystem root", func(t *testing.T) {
 		var mountCalls int
 		runCmd := func(name string, args ...string) error {
