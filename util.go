@@ -107,6 +107,29 @@ func resolveKeySize(shortSet bool, shortVal int, longSet bool, longVal int, dflt
 	return dflt, false
 }
 
+// sameFilePath reports whether two paths refer to the same file. Resolving
+// both to absolute, cleaned paths makes a relative and an absolute spelling of
+// the same file collide (e.g. "c.img" vs "/work/c.img"), which a plain string
+// comparison would miss. The parent directory is additionally resolved through
+// symlinks (e.g. /var -> /private/var on macOS) so two spellings of one
+// location compare equal even when the leaf does not exist yet, as it does not
+// for a container being created.
+func sameFilePath(a, b string) bool {
+	canonical := func(p string) string {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return filepath.Clean(p)
+		}
+		if dir := filepath.Dir(abs); dir != "" && dir != "." {
+			if eval, evalErr := filepath.EvalSymlinks(dir); evalErr == nil {
+				return filepath.Join(eval, filepath.Base(abs))
+			}
+		}
+		return abs
+	}
+	return canonical(a) == canonical(b)
+}
+
 // checkKeyFile verifies that path exists and is not a directory, so a LUKS key
 // (passphrase-less) fails with a clear message before any mapping is opened or
 // a container file is grown rather than with a cryptic cryptsetup error.

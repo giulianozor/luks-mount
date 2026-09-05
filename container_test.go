@@ -325,6 +325,31 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a key file that aliases the absolute container path", func(t *testing.T) {
+		run := func(name string, args ...string) error { return nil }
+		dir, err := filepath.Abs(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		// cwd is the container's directory, so the relative key "same.img"
+		// names exactly the absolute container /dir/same.img. The string
+		// equality guard would miss this alias; the absolute-path one must not.
+		oldWd, wdErr := os.Getwd()
+		if wdErr != nil {
+			t.Fatal(wdErr)
+		}
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chdir(oldWd)
+
+		img := filepath.Join(dir, "same.img")
+		err = createContainer(run, run, img, "256M", "", "same.img", 512)
+		if err == nil || !strings.Contains(err.Error(), "must be different") {
+			t.Errorf("expected a relative/absolute collision error, got %v", err)
+		}
+	})
+
 	t.Run("missing key file parent directory is rejected up front", func(t *testing.T) {
 		var cryptCalls int
 		run := func(name string, args ...string) error {
