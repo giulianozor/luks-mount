@@ -16,6 +16,31 @@ var userHomeDir = os.UserHomeDir
 // It shares the same stat-based probe umountAndClose uses (checkMapped).
 var mapperProbe = checkMapped
 
+// checkSourceMode rejects a source entry that can never back a mount: a
+// directory, a FIFO/socket or other special non-device entry (which would also
+// block the LUKS sniff open forever), or an empty regular file. It is applied
+// uniformly including under /dev, where a FIFO would otherwise hang the probe.
+func checkSourceMode(fi os.FileInfo, source string) error {
+	if fi.IsDir() {
+		// A directory can never be a mount source (lmount does no bind
+		// mounts); rejecting it up front is clearer than mount's own failure.
+		return fmt.Errorf("source %s is a directory, not a device or file", source)
+	}
+	if !fi.Mode().IsRegular() && fi.Mode()&os.ModeDevice == 0 {
+		// A FIFO, socket, or other special file can never be a mount source
+		// and may even block sniffing it (opening a FIFO for reading blocks
+		// until a writer appears). Reject it up front rather than hanging or
+		// failing cryptically later.
+		return fmt.Errorf("source %s is not a regular file", source)
+	}
+	if fi.Mode().IsRegular() && fi.Size() == 0 {
+		// An empty file carries no filesystem for a loop mount to attach;
+		// mount's error on a zero-length image is cryptic.
+		return fmt.Errorf("source %s is an empty file and cannot be mounted", source)
+	}
+	return nil
+}
+
 func openAndMount(runCmd func(name string, args ...string) error, runOutput func(name string, args ...string) ([]byte, error), source, keyFile, mountPoint string) error {
 	isLuks := func(source string) bool {
 		_, err := runOutput("cryptsetup", "isLuks", source)
@@ -41,44 +66,36 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	// reports "not LUKS", which would otherwise mask a typo'd source path as a
 	// "not LUKS" error, and wastes a privileged cryptsetup probe (and possibly a
 	// sudo prompt) on a path that can never be mounted.
-	if !strings.HasPrefix(source, "/dev/") && source != "" {
-		fi, err := os.Stat(source)
-		if err != nil {
-			if os.IsNotExist(err) {
-				if !strings.Contains(source, "/") {
-					// A bare name such as "sda1" may still name a /dev/
-					// device. Resolve it here so openAndMount is self-contained
-					// (mirroring umountAndClose and main's resolveSource), and
-					// only give up when that /dev node is missing too.
-					if _, devErr := os.Stat("/dev/" + source); devErr == nil {
-						source = "/dev/" + source
-						name = srcName(source)
-					} else {
-						return fmt.Errorf("source %s does not exist", source)
-					}
+	if source == "" {
+		return fmt.Errorf("cannot determine name from empty source")
+	}
+	fi, err := os.Stat(source)
+	if err != nil {
+		if os.IsNotExist(err) && !strings.HasPrefix(source, "/dev/") {
+			if !strings.Contains(source, "/") {
+				// A bare name such as "sda1" may still name a /dev/ device.
+				// Resolve it here so openAndMount is self-contained (mirroring
+				// umountAndClose and main's resolveSource), and only give up
+				// when that /dev node is missing too.
+				if _, devErr := os.Stat("/dev/" + source); devErr == nil {
+					source = "/dev/" + source
+					name = srcName(source)
 				} else {
-					// A non-device source that does not exist is almost certainly a
-					// typo. Reject it up front rather than letting
-					// cryptsetup/mount fail with a cryptic error, and never leave
-					// a LUKS mapping open for nothing.
 					return fmt.Errorf("source %s does not exist", source)
 				}
+			} else {
+				// A non-device source that does not exist is almost certainly a
+				// typo. Reject it up front rather than letting cryptsetup/mount
+				// fail with a cryptic error, and never leave a LUKS mapping
+				// open for nothing.
+				return fmt.Errorf("source %s does not exist", source)
 			}
-		} else if fi.IsDir() {
-			// A directory can never be a mount source (lmount does no bind
-			// mounts); rejecting it up front is clearer than mount's own failure.
-			return fmt.Errorf("source %s is a directory, not a device or file", source)
-		} else if fi.Mode().IsRegular() && fi.Size() == 0 {
-			// An empty file carries no filesystem for a loop mount to attach;
-			// mount's error on a zero-length image is cryptic.
-			return fmt.Errorf("source %s is an empty file and cannot be mounted", source)
-		} else if !fi.Mode().IsRegular() && fi.Mode()&os.ModeDevice == 0 {
-			// A FIFO, socket, or other special file can never be a mount
-			// source and may even block sniffing it (opening a FIFO for
-			// reading blocks until a writer appears). Reject it up front
-			// rather than hanging or failing cryptically later.
-			return fmt.Errorf("source %s is not a regular file", source)
 		}
+		// Other failures (a missing /dev nide, or EACCES on a device the
+		// invoking user cannot even stat) pass through: the LUKS sniff falls
+		// back to the privileged cryptsetup probe and sudo can still act.
+	} else if err := checkSourceMode(fi, source); err != nil {
+		return err
 	}
 
 	// Deciding LUKS by reading the header's magic directly avoids a privileged

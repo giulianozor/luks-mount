@@ -77,6 +77,55 @@ func TestParseFindmntTargets(t *testing.T) {
 	}
 }
 
+func TestCheckSourceMode(t *testing.T) {
+	dir := t.TempDir()
+	run := func(name, source string) {
+		t.Helper()
+		fi, err := os.Stat(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := checkSourceMode(fi, source); err != nil {
+			t.Errorf("checkSourceMode(%q) = %v, want nil", source, err)
+		}
+	}
+	reject := func(name, source, want string) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			fi, err := os.Stat(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = checkSourceMode(fi, source)
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("expected %q in error, got %v", want, err)
+			}
+		})
+	}
+
+	t.Run("accepts a regular non-empty file", func(t *testing.T) {
+		f := filepath.Join(dir, "img")
+		if err := os.WriteFile(f, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		run("regular", f)
+	})
+
+	reject("directory", dir, "is a directory")
+	reject("FIFO", makeFIFO(t), "not a regular file")
+	reject("socket", makeSocket(t), "not a regular file")
+	reject("empty file", func() string {
+		f := filepath.Join(dir, "empty")
+		if err := os.WriteFile(f, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}(), "empty file")
+}
+
 func TestCheckKeyFile(t *testing.T) {
 	t.Run("accepts a regular non-empty file", func(t *testing.T) {
 		kf := filepath.Join(t.TempDir(), "key")
@@ -753,24 +802,24 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
-	t.Run("empty source closes LUKS when mountpoint inferred", func(t *testing.T) {
-		var calledClose bool
+	t.Run("empty source is rejected before any probe or open", func(t *testing.T) {
+		var opens int
 		runCmd := func(name string, args ...string) error {
-			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
-				calledClose = true
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				opens++
 			}
 			return nil
 		}
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
 
 		err := openAndMount(runCmd, runOutput, "", "", "")
-		if err == nil || !strings.Contains(err.Error(), "cannot infer mount point name") {
-			t.Fatalf("expected mountpoint inference error, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), "cannot determine name from empty source") {
+			t.Fatalf("expected an empty-source error, got %v", err)
 		}
-		// luksOpen was mocked as successful (runOutput returns nil => isLuks true),
-		// so luksClose must be called on this error path to avoid a leak.
-		if !calledClose {
-			t.Error("luksClose was not called when mountpoint inference failed after LUKS open")
+		// Nothing was opened, so nothing may be closed either; the up-front
+		// rejection makes a leaked LUKS mapping impossible for an empty source.
+		if opens != 0 {
+			t.Error("no luksOpen may run for an empty source")
 		}
 	})
 
