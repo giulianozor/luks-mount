@@ -13,10 +13,8 @@ var userHomeDir = os.UserHomeDir
 
 // mapperProbe reports whether a /dev/mapper/NAME mapping already exists; a
 // variable so tests can simulate an open mapping without touching /dev/mapper.
-var mapperProbe = func(name string) bool {
-	_, err := os.Stat("/dev/mapper/" + name)
-	return err == nil
-}
+// It shares the same stat-based probe umountAndClose uses (checkMapped).
+var mapperProbe = checkMapped
 
 func openAndMount(runCmd func(name string, args ...string) error, runOutput func(name string, args ...string) ([]byte, error), source, keyFile, mountPoint string) error {
 	isLuks := func(source string) bool {
