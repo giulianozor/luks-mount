@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -31,6 +32,60 @@ func TestDirectCommandWrappers(t *testing.T) {
 		t.Error("runOutputDirect on a missing command should error")
 	} else if !strings.Contains(err.Error(), "executable file not found") {
 		t.Errorf("expected a missing-executable error, got %T: %v", err, err)
+	}
+}
+
+func TestSudoCommandWrappers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the sudo shim is a Unix shell script")
+	}
+	// A $PATH sudo shim that simply execs its arguments exercises the sudoCmd /
+	// runCmd / runOutput wiring (args, stdin/stdout/stderr plumbing, and the
+	// stderr-in-error folding) without ever invoking real sudo, needing a
+	// password, or running a privileged kernel call.
+	binDir := t.TempDir()
+	shim := filepath.Join(binDir, "sudo")
+	if err := os.WriteFile(shim, []byte("#!/bin/sh\n\"$@\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := sudoCmd("true", "-x").Run(); err != nil {
+		t.Errorf("sudoCmd(true) = %v, want nil", err)
+	}
+
+	if err := runCmd("false"); err == nil {
+		t.Error("runCmd(false) = nil, want a failure")
+	}
+	if err := runCmd("sh", "-c", "exit 3"); err == nil {
+		t.Error("runCmd(sh -c 'exit 3') = nil, want a failure")
+	}
+
+	if out := captureStdout(t, func() {
+		if err := runCmd("echo", "hello-pass"); err != nil {
+			t.Errorf("runCmd(echo) unexpected error: %v", err)
+		}
+	}); !strings.Contains(out, "hello-pass") {
+		t.Errorf("runCmd(echo) did not pipe stdout through, got %q", out)
+	}
+
+	out, err := runOutput("echo", "ok")
+	if err != nil {
+		t.Errorf("runOutput(echo ok) unexpected error: %v", err)
+	}
+	if string(out) != "ok\n" {
+		t.Errorf("runOutput(echo ok) = %q, want %q", out, "ok\n")
+	}
+
+	// stderr is folded into the error so callers can see why the command failed.
+	if _, err := runOutput("sh", "-c", "echo boom >&2; exit 2"); err == nil ||
+		!strings.Contains(err.Error(), "boom") {
+		t.Errorf("runOutput(stderr+exit 2) expected the stderr text in the error, got %v", err)
+	}
+
+	if _, err := runOutput("sh", "-c", "lmount-definitely-not-a-command-xyz"); err == nil ||
+		!strings.Contains(err.Error(), "not found") {
+		t.Errorf("runOutput(sh -c missing) expected the shell's failure in the error, got %v", err)
 	}
 }
 
