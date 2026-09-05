@@ -186,7 +186,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		if createdMountpoint {
 			_ = os.Remove(mountPoint)
 		}
-		return fmt.Errorf("mount failed: %w", err)
+		return fmt.Errorf("mount failed: %w (device %s, target %s)", err, device, mountPoint)
 	}
 
 	current, err := user.Current()

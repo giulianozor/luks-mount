@@ -420,6 +420,9 @@ func TestOpenAndMount_luks(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "mount failed") {
 			t.Errorf("expected mount error, got %v", err)
 		}
+		if !strings.Contains(err.Error(), "/dev/mapper/__test_dev__") || !strings.Contains(err.Error(), mp) {
+			t.Errorf("mount error should name the device and target, got %v", err)
+		}
 		if !calledClose {
 			t.Error("luksClose was not called — cleanup should run on mount error")
 		}
