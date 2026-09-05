@@ -23,16 +23,16 @@ sudo tee /etc/sudoers.d/lmount >/dev/null <<'EOF'
 # Non-interactive use of the tools lmount runs with sudo.
 # Adjust these to your distribution's actual paths and to a more restrictive
 # group if you prefer.
-%sudo ALL=(root) NOPASSWD: /usr/bin/cryptsetup, /usr/bin/mount, /usr/bin/umount, /usr/bin/chown, /usr/sbin/mkfs.ext4, /usr/sbin/fsck.ext4, /usr/sbin/resize2fs
+%sudo ALL=(root) NOPASSWD: /usr/bin/cryptsetup, /usr/bin/mount, /usr/bin/umount, /usr/bin/chown, /usr/bin/install, /usr/sbin/mkfs.ext4, /usr/sbin/fsck.ext4, /usr/sbin/resize2fs
 EOF
 sudo chmod 0440 /etc/sudoers.d/lmount
 ```
 
 The privileged commands are `cryptsetup` (for `isLuks`, `luksOpen`, and
 `luksClose`), `mount`, `umount`, `chown`, `mkfs.ext4`, `fsck.ext4`, and
-`resize2fs`. The mount-table probe (`findmnt`) runs unprivileged. Container
-creation (`dd`) and sizing (`truncate`) also run as the invoking user and do
-not need `sudo`.
+`resize2fs`; `install` is only needed for `make install`. The mount-table probe
+(`findmnt`) runs unprivileged. Container creation (`dd`) and sizing (`truncate`)
+also run as the invoking user and do not need `sudo`.
 
 > **Security note:** granting passwordless `sudo` for these binaries allows
 > anyone with access to your account to run them as root. In particular,
@@ -81,7 +81,7 @@ Encryption is auto-detected by reading the LUKS header magic directly when the s
 lmount -u <source>
 ```
 
-Unmounts all mount points backed by the source (or `/dev/mapper/<source>` for LUKS), removes the now-empty mount directories (non-empty ones are kept, with a note), and closes the LUKS mapping if present. An open LUKS mapping is checked before the backing path, so `lmount -u` still detaches and closes the mapping even if the backing file was deleted.
+Unmounts all mount points backed by the source (or `/dev/mapper/<source>` for LUKS), removes the now-empty mount directories (non-empty ones are kept, with a note), and closes the LUKS mapping if present. For a plain file-backed mount, `findmnt` resolves the loop backing file, so `-u <path>` works with the original image path rather than the `/dev/loopN` device. An open LUKS mapping is checked before the backing path, so `lmount -u` still detaches and closes the mapping even if the backing file was deleted.
 
 ### Create
 
