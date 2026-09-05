@@ -43,6 +43,12 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 			// An empty file carries no filesystem for a loop mount to attach;
 			// mount's error on a zero-length image is cryptic.
 			return fmt.Errorf("source %s is an empty file and cannot be mounted", source)
+		} else if !fi.Mode().IsRegular() && fi.Mode()&os.ModeDevice == 0 {
+			// A FIFO, socket, or other special file can never be a mount
+			// source and may even block sniffing it (opening a FIFO for
+			// reading blocks until a writer appears). Reject it up front
+			// rather than hanging or failing cryptically later.
+			return fmt.Errorf("source %s is not a regular file", source)
 		}
 	}
 

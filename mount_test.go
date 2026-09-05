@@ -4,11 +4,34 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// makeSocket creates a unix socket file and returns a cleanup function.
+// Sockets (and FIFOs) are non-regular entries that can never be a mount
+// source, and a FIFO even blocks a read-open forever. The socket is placed
+// directly under os.TempDir() because a unix socket path is length-limited
+// (~104 bytes) and deep test dirs would fail to bind.
+func makeSocket(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(os.TempDir(), fmt.Sprintf("lmount-test-%d.sock", os.Getpid()))
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	l, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		l.Close()
+		os.Remove(path)
+	})
+	return path
+}
 
 func TestOpenAndMount_luks(t *testing.T) {
 	t.Run("success default mount", func(t *testing.T) {
@@ -589,6 +612,35 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 		if mountCalls != 0 {
 			t.Errorf("mount should not be attempted for a missing source, got %d calls", mountCalls)
+		}
+	})
+
+	t.Run("rejects a socket source instead of probing or mounting", func(t *testing.T) {
+		sock := makeSocket(t)
+
+		var mountCalls, cryptCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				mountCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			if name == "cryptsetup" {
+				cryptCalls++
+			}
+			return nil, errors.New("not luks")
+		}
+
+		err := openAndMount(runCmd, runOutput, sock, "", "")
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("expected a not-a-regular-file error, got %v", err)
+		}
+		if mountCalls != 0 {
+			t.Errorf("mount should not be attempted for a socket source, got %d calls", mountCalls)
+		}
+		if cryptCalls != 0 {
+			t.Errorf("cryptsetup should not be probed for a socket source, got %d calls", cryptCalls)
 		}
 	})
 
