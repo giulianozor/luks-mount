@@ -166,6 +166,7 @@ lmount -c mycontainer.img -cs 2G -ck mykeyfile -cks 1024
 ```sh
 make build   # compile
 make test    # run tests
+make check   # vet + gofmt cleanliness + tests
 make clean   # remove binary
 ```
 
