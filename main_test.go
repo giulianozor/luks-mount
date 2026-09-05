@@ -114,6 +114,8 @@ func TestRunMain(t *testing.T) {
 		{"long key-size without create-key-file", []string{"-c", "img", "-cs", "32M", "--key-size", "1024"}, 1, "only valid with -ck", false, ""},
 		{"create without size", []string{"-c", "img"}, 1, "required with -c/--create", false, ""},
 		{"expand-size without expand", []string{"-xs", "1G"}, 1, "only valid with -x/--expand", false, ""},
+		{"key-size nothing", []string{"-c", "img", "-cs", "32M", "-ck", "/k", "-cks", "100"}, 1, "must be a multiple of 8", false, ""},
+		{"long key-size nothing", []string{"-c", "img", "-cs", "32M", "-ck", "/k", "--key-size", "100"}, 1, "must be a multiple of 8", false, ""},
 		{"expand without size", []string{"-x", "/tmp/x.img"}, 1, "required with -x/--expand", false, ""},
 		{"create key conflicts", []string{"-c", "img", "-cs", "32M", "-k", "/k", "-ck", "/k2"}, 1, "cannot be used together", false, ""},
 		{"umount with key rejected", []string{"-u", "/dev/x", "-k", "/k"}, 1, "not valid with -u/--umount", false, ""},
