@@ -235,6 +235,15 @@ func TestRunMainExpandsHomeForAllPathFlags(t *testing.T) {
 	}
 }
 
+func TestUsageDocumentsTildeExpansion(t *testing.T) {
+	out := captureStdout(t, func() { usageTo(os.Stdout) })
+	for _, want := range []string{"Notes:", "leading ~/"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("usage output missing %q", want)
+		}
+	}
+}
+
 func TestUsageContainsCreateFlags(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {

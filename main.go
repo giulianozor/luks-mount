@@ -44,6 +44,8 @@ func usageTo(w io.Writer) {
 	fmt.Fprintf(w, "  %-27s %s\n", "-u, --umount <source>", "Source to unmount and close")
 	fmt.Fprintf(w, "  %-27s %s\n", "-s, --source <path>", "Source device or file")
 	fmt.Fprintf(w, "  %-27s %s\n", "-h, --help", "Show help")
+	fmt.Fprintf(w, "\nNotes:\n")
+	fmt.Fprintf(w, "  Path arguments expand a leading ~/ (or a bare ~) to your home directory.\n")
 }
 
 func usage() {

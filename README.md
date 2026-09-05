@@ -66,7 +66,7 @@ lmount -s <source> -k <keyfile> -m <mountpoint>
 
 - `-s` / `--source` — path to a block device (e.g. `sda1` or `/dev/sda1`) or a file-backed container.
 - `-k` / `--key` — optional path to a LUKS key file. It is only valid when the source is detected as LUKS; passing it for a non-LUKS (or nonexistent) source is an error. The key file must exist, be a regular file, and be non-empty; the source itself (even via a relative or symlinked spelling) is rejected as a key.
-- Path arguments (`-s`, `-u`, `-m`, `-k`, `-c`, `-x`, `-ck`) expand a leading `~/` (or a bare `~`) to your home directory, so a shell-quoted `-m '~/data'` never creates a literal `~` directory and `-c '~/vault.img'` fails with a sensible missing-parent error instead of `directory ~ does not exist`.
+- Path arguments (`-s`, `-u`, `-m`, `-k`, `-c`, `-x`, `-ck`) expand a leading `~/` (or a bare `~`) to your home directory, so a shell-quoted `-m '~/data'` never creates a literal `~` directory and `-c '~/vault.img'` creates the container in your home.
 - `-m` / `--mount` — mount point (default: `~/<source-basename>`). If a file already exists at the path, `.mnt` is appended automatically (bounded to 16 candidates). Mounting at the filesystem root (`-m /`) and mounting under a path that is actually a file are refused.
 
 Sources and mount points that are directories, FIFOs, sockets, empty files, or missing paths are rejected up front with clear errors instead of failing cryptically later. If the source is already open as a LUKS mapping, `lmount` reports it instead of attempting a second `luksOpen`. Whenever `lmount` creates the mount point itself, it takes ownership of it (so files written there belong to the invoking user); pre-existing directories are never re-chowned.
