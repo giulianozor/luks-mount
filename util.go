@@ -198,6 +198,13 @@ func checkKeyFile(path, what string) error {
 		// so reject it before any mapping is opened or container is grown.
 		return fmt.Errorf("%s %q is not a regular file", what, path)
 	}
+	if fi.Mode()&os.ModeCharDevice != 0 {
+		// A character device (e.g. /dev/random) yields fresh bytes on every
+		// read, so it can never match an existing keyslot and would fail
+		// cryptically only after a privileged luksOpen. Block devices stay
+		// allowed: a raw partition is a legitimate, stable key source.
+		return fmt.Errorf("%s %q is a character device, not a regular file", what, path)
+	}
 	if fi.Mode().IsRegular() && fi.Size() == 0 {
 		// A zero-length key file can never authenticate a LUKS device; reject
 		// it before luksOpen returns its cryptic "no key available" error.

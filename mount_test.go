@@ -154,6 +154,16 @@ func TestCheckKeyFile(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a character device key", func(t *testing.T) {
+		if fi, err := os.Stat("/dev/zero"); err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+			t.Skip("/dev/zero is not a character device on this host")
+		}
+		err := checkKeyFile("/dev/zero", "key file")
+		if err == nil || !strings.Contains(err.Error(), "character device") {
+			t.Errorf("expected a character-device error, got %v", err)
+		}
+	})
+
 	t.Run("rejects a directory", func(t *testing.T) {
 		err := checkKeyFile(t.TempDir(), "key file")
 		if err == nil || !strings.Contains(err.Error(), "is a directory") {
