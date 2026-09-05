@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,6 +53,30 @@ func TestResolveSource(t *testing.T) {
 			t.Errorf("got %q, want %q", fp, "nonexistent")
 		}
 	})
+}
+
+func TestCheckMapperName(t *testing.T) {
+	tests := []struct {
+		name string
+		want error
+	}{
+		{"sda1", nil},
+		{"container.img", nil},
+		{"some-name_with.dots", nil},
+		{".", fmt.Errorf("")},
+		{"..", fmt.Errorf("")},
+		{"/", fmt.Errorf("")},
+		{"my container.img", fmt.Errorf("")},
+		{"a\tb", fmt.Errorf("")},
+		{"a\nb", fmt.Errorf("")},
+		{"a/b", fmt.Errorf("")},
+	}
+	for _, tt := range tests {
+		err := checkMapperName(tt.name)
+		if (err != nil) != (tt.want != nil) {
+			t.Errorf("checkMapperName(%q) error = %v, want error: %v", tt.name, err, tt.want != nil)
+		}
+	}
 }
 
 func TestRemoveIfEmpty(t *testing.T) {
