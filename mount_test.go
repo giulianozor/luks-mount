@@ -1032,7 +1032,13 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 	})
 
 	t.Run("mountpoint path exists as file", func(t *testing.T) {
-		runCmd := func(name string, args ...string) error { return nil }
+		var chownArgs []string
+		runCmd := func(name string, args ...string) error {
+			if name == "chown" {
+				chownArgs = args
+			}
+			return nil
+		}
 		runOutput := func(name string, args ...string) ([]byte, error) { return nil, errors.New("not luks") }
 
 		dir := t.TempDir()
@@ -1047,6 +1053,11 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 		if _, err := os.Stat(blocker + ".mnt"); os.IsNotExist(err) {
 			t.Error("mountpoint was not created at <path>.mnt")
+		}
+		// The .mnt directory was created by lmount, so it must be chowned to
+		// the invoking user (the file blocker itself must be left alone).
+		if len(chownArgs) == 0 || chownArgs[len(chownArgs)-1] != blocker+".mnt" {
+			t.Errorf("expected chown on the fallback mount point %q, got %v", blocker+".mnt", chownArgs)
 		}
 	})
 }
