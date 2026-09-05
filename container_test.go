@@ -703,16 +703,39 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
-	t.Run("luksOpen fails", func(t *testing.T) {
+	t.Run("luksOpen fails cleans up key file and container", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "c.img")
+		kf := filepath.Join(dir, "keyfile")
+
+		var closeCalls, mkfsCalls int
 		run := func(name string, args ...string) error {
-			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+			switch {
+			case name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom"):
+				return os.WriteFile(kf, bytes.Repeat([]byte("x"), 512), 0644)
+			case name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero"):
+				return os.WriteFile(img, make([]byte, 4096), 0644)
+			case name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen":
 				return errors.New("luksOpen failed")
+			case name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose":
+				closeCalls++
+			case name == "mkfs.ext4":
+				mkfsCalls++
 			}
 			return nil
 		}
-		err := createContainer(run, run, filepath.Join(t.TempDir(), "c.img"), "256M", "", "", 512)
+		err := createContainer(run, run, img, "256M", "", kf, 512)
 		if err == nil || !strings.Contains(err.Error(), "luksOpen failed") {
 			t.Errorf("expected luksOpen error, got %v", err)
+		}
+		if _, statErr := os.Stat(kf); !os.IsNotExist(statErr) {
+			t.Errorf("generated key file %q should have been removed after luksOpen failure", kf)
+		}
+		if _, statErr := os.Stat(img); !os.IsNotExist(statErr) {
+			t.Errorf("container %q should have been removed after luksOpen failure", img)
+		}
+		if closeCalls != 0 || mkfsCalls != 0 {
+			t.Errorf("no luksClose or mkfs.ext4 should run when luksOpen failed, got close=%d mkfs=%d", closeCalls, mkfsCalls)
 		}
 	})
 
