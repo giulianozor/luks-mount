@@ -1090,6 +1090,39 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("returns the right flags for missing, short, and LUKS files", func(t *testing.T) {
+		dir := t.TempDir()
+
+		missing := filepath.Join(dir, "missing")
+		if _, read := sniffLuks(missing); read {
+			t.Error("a missing file must not be readable")
+		}
+
+		short := filepath.Join(dir, "short")
+		if err := os.WriteFile(short, []byte("LU"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if luks, read := sniffLuks(short); luks || !read {
+			t.Errorf("short file: got luks=%v readable=%v, want false,true", luks, read)
+		}
+
+		luksFile := filepath.Join(dir, "luks")
+		if err := os.WriteFile(luksFile, []byte(luksMagic), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if luks, read := sniffLuks(luksFile); !luks || !read {
+			t.Errorf("LUKS-magic file: got luks=%v readable=%v, want true,true", luks, read)
+		}
+
+		other := filepath.Join(dir, "other")
+		if err := os.WriteFile(other, []byte("NOTLUK\xba\xbeheader-tails"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if luks, read := sniffLuks(other); luks || !read {
+			t.Errorf("mismatched-magic file: got luks=%v readable=%v, want false,true", luks, read)
+		}
+	})
+
 	t.Run("file does not exist", func(t *testing.T) {
 		run := func(name string, args ...string) error { return nil }
 		err := expandContainer(run, run, "/nonexistent/file", "256M", "")
