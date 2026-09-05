@@ -157,7 +157,11 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	// If the mount point path exists as a file (not a directory), fall back to
 	// <path>.mnt. Bound the number of fallbacks: an unbounded loop would never
 	// terminate if every <path>.mnt.mnt... candidate also exists as a file.
+	// The loop also determines whether the directory we end up mounting at was
+	// created here (createdMountpoint), the signal that governs cleanup on
+	// failure and the ownership chown.
 	mountPointBase := mountPoint
+	createdMountpoint := false
 	const maxMountPointCollisions = 16
 	for attempt := 0; ; attempt++ {
 		if attempt == maxMountPointCollisions {
@@ -178,11 +182,9 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 			// a LUKS mapping that was already opened.
 			return failOpen(fmt.Errorf("checking mount point %s: %w", mountPoint, err))
 		}
+		createdMountpoint = true
 		break
 	}
-
-	_, statErr := os.Stat(mountPoint)
-	createdMountpoint := os.IsNotExist(statErr)
 
 	fmt.Printf("Creating mount point %s...\n", mountPoint)
 	if err := os.MkdirAll(mountPoint, 0755); err != nil {
