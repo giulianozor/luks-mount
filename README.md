@@ -10,7 +10,7 @@ This tool is **Linux-only**. It relies on Linux-specific tools and interfaces
 available or compatible on macOS or Windows.
 
 - `sudo` access, ideally passwordless for the commands below.
-- Go 1.21+ (to build from source).
+- Go 1.26+ (see `go.mod`), to build from source.
 
 ## Recommended sudoers configuration
 
@@ -68,9 +68,9 @@ lmount -s <source> -k <keyfile> -m <mountpoint>
 - `-k` / `--key` — optional path to a LUKS key file. It is only valid when the source is detected as LUKS; passing it for a non-LUKS (or nonexistent) source is an error.
 - `-m` / `--mount` — mount point (default: `~/<source-basename>`). If a file already exists at the path, `.mnt` is appended automatically.
 
-Source resolution: if the source path does not exist as a file or directory, `/dev/<source>` is tried. The first existing path wins; if neither exists, the original value is passed through to `mount`.
+Source resolution: if the source path does not exist as a file or directory, `/dev/<source>` is tried (so bare names like `sda1` work). For valid sources, LUKS encryption is auto-detected; nonexistent paths are rejected with a clear error before anything is mounted.
 
-Encryption is auto-detected via `cryptsetup isLuks`. LUKS sources are opened with `luksOpen` before mounting; plain sources are mounted directly.
+Encryption is auto-detected by reading the LUKS header magic directly when the source can be read as a file. Sources that cannot be read locally (e.g. block devices behind sudo) fall back to `cryptsetup isLuks`. LUKS sources are opened with `luksOpen` before mounting; plain sources are mounted directly.
 
 ### Unmount
 
