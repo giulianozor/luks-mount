@@ -818,6 +818,31 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a socket container file before probing or growing", func(t *testing.T) {
+		sock := makeSocket(t)
+
+		var truncateCalls, cryptCalls int
+		run := func(name string, args ...string) error {
+			if name == "truncate" {
+				truncateCalls++
+			}
+			if name == "cryptsetup" {
+				cryptCalls++
+			}
+			return nil
+		}
+		err := expandContainer(run, run, sock, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("expected a not-a-regular-file error, got %v", err)
+		}
+		if truncateCalls != 0 {
+			t.Errorf("container should not be grown when it is a socket, got %d truncate calls", truncateCalls)
+		}
+		if cryptCalls != 0 {
+			t.Errorf("cryptsetup should not be probed for a socket container, got %d calls", cryptCalls)
+		}
+	})
+
 	t.Run("missing key file fails fast before growing", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")

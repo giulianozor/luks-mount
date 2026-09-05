@@ -234,6 +234,13 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 	oldSize := fi.Size()
 
+	if !fi.Mode().IsRegular() {
+		// isLuksContainer opens the file for reading; a FIFO at this path would
+		// block that open forever, and truncate cannot extend a directory or
+		// socket. Reject non-regular entries before any probing or growing.
+		return fmt.Errorf("not a regular file: %s", filename)
+	}
+
 	if !isLuksContainer(filename) {
 		return fmt.Errorf("not a LUKS container: %s", filename)
 	}
