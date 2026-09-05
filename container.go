@@ -414,9 +414,13 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	}
 
 	newFi, err := os.Stat(filename)
-	if err != nil {
-		return fmt.Errorf("stat %s after expand: %w", filename, err)
+	if err == nil {
+		fmt.Printf("Old size: %d, New size: %d\n", oldSize, newFi.Size())
+	} else {
+		// The resize itself succeeded; this stat only sizes the report line.
+		// Failing the whole expand over diagnostics would misreport a
+		// successful operation (mirroring createContainer's tolerant report).
+		fmt.Fprintf(os.Stderr, "Warning: stat %s after expand: %v\n", filename, err)
 	}
-	fmt.Printf("Old size: %d, New size: %d\n", oldSize, newFi.Size())
 	return nil
 }

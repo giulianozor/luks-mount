@@ -1248,6 +1248,38 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("a failed post-expand stat does not fail a successful expand", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				// Simulate the container vanishing by the time the final
+				// diagnostics stat runs (e.g. a concurrent removal).
+				return os.Remove(f)
+			}
+			return nil
+		}
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldStderr := os.Stderr
+		os.Stderr = w
+		defer func() { os.Stderr = oldStderr }()
+
+		if err := expandContainer(run, run, f, "256M", ""); err != nil {
+			t.Fatalf("expand must succeed despite the report stat failing: %v", err)
+		}
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		if !strings.Contains(buf.String(), "Warning: stat") {
+			t.Errorf("expected a warning about the failed stat, got %q", buf.String())
+		}
+	})
+
 	t.Run("returns the right flags for missing, short, and LUKS files", func(t *testing.T) {
 		dir := t.TempDir()
 
