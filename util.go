@@ -169,6 +169,12 @@ func checkKeyFile(path, what string) error {
 	if fi.IsDir() {
 		return fmt.Errorf("%s %q is a directory", what, path)
 	}
+	if fi.Mode()&os.ModeNamedPipe != 0 || fi.Mode()&os.ModeSocket != 0 {
+		// A key file must be a seekable regular file. cryptsetup would open a
+		// FIFO/socket key for reading and block forever waiting for a writer,
+		// so reject it before any mapping is opened or container is grown.
+		return fmt.Errorf("%s %q is not a regular file", what, path)
+	}
 	if fi.Mode().IsRegular() && fi.Size() == 0 {
 		// A zero-length key file can never authenticate a LUKS device; reject
 		// it before luksOpen returns its cryptic "no key available" error.

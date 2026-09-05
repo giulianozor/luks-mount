@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -31,6 +32,64 @@ func makeSocket(t *testing.T) string {
 		os.Remove(path)
 	})
 	return path
+}
+
+// makeFIFO creates a named pipe and returns a cleanup function. A FIFO key
+// file would block cryptsetup forever waiting for a writer, so it must be
+// rejected before any mapping is opened.
+func makeFIFO(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "key.fifo")
+	if err := syscall.Mkfifo(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestCheckKeyFile(t *testing.T) {
+	t.Run("accepts a regular non-empty file", func(t *testing.T) {
+		kf := filepath.Join(t.TempDir(), "key")
+		if err := os.WriteFile(kf, []byte("not-empty"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := checkKeyFile(kf, "key file"); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects a socket key file", func(t *testing.T) {
+		sock := makeSocket(t)
+		err := checkKeyFile(sock, "key file")
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("expected a not-a-regular-file error, got %v", err)
+		}
+	})
+
+	t.Run("rejects a FIFO key file", func(t *testing.T) {
+		fifo := makeFIFO(t)
+		err := checkKeyFile(fifo, "key file")
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("expected a not-a-regular-file error, got %v", err)
+		}
+	})
+
+	t.Run("rejects a directory", func(t *testing.T) {
+		err := checkKeyFile(t.TempDir(), "key file")
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("expected a directory error, got %v", err)
+		}
+	})
+
+	t.Run("rejects an empty regular file", func(t *testing.T) {
+		kf := filepath.Join(t.TempDir(), "key")
+		if err := os.WriteFile(kf, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := checkKeyFile(kf, "key file")
+		if err == nil || !strings.Contains(err.Error(), "is empty") {
+			t.Errorf("expected an empty-file error, got %v", err)
+		}
+	})
 }
 
 func TestOpenAndMount_luks(t *testing.T) {
