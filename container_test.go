@@ -807,6 +807,29 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("normalizes a trailing slash on the container file", func(t *testing.T) {
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "test.img")
+
+		var luksOpenSource string
+		run := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" && len(args) > 1 {
+				luksOpenSource = args[len(args)-2]
+			}
+			return nil
+		}
+
+		// A trailing slash would make os.Stat treat the file as a directory
+		// (ENOTDIR); the normalized path must be grown and opened instead.
+		err := expandContainer(run, run, f+"/", "256M", "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if luksOpenSource != f {
+			t.Errorf("expected luksOpen source %q (slash normalized), got %q", f, luksOpenSource)
+		}
+	})
+
 	t.Run("final luksClose failure reports a left-open mapping", func(t *testing.T) {
 		dir := t.TempDir()
 		f := writeLUKSFake(t, dir, "test.img")

@@ -241,6 +241,11 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 		return err
 	}
 
+	// A trailing separator on the container name (e.g. "dir/img/" from a shell
+	// completion) would make os.Stat/open treat the file as a directory; match
+	// the normalization openAndMount/umountAndClose apply to their sources.
+	filename = trimTrailingSeparators(filename)
+
 	fi, err := os.Stat(filename)
 	if err != nil {
 		return fmt.Errorf("stat %s: %w", filename, err)
