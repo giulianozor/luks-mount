@@ -46,7 +46,7 @@ func usageTo(w io.Writer) {
 	fmt.Fprintf(w, "  %-29s %s\n", "-c, --create <name>", "Create a LUKS container")
 	fmt.Fprintf(w, "  %-29s %s\n", "-cs, --size <size>", "Container size with suffix M or G (e.g. 100M, 2G)")
 	fmt.Fprintf(w, "  %-29s %s\n", "-ck, --create-key-file <path>", "Path for the LUKS key file to create")
-	fmt.Fprintf(w, "  %-29s %s\n", "-cks, --key-size <n>", "Key file size in bytes (default: 512; only with -ck)")
+	fmt.Fprintf(w, "  %-29s %s\n", "-cks, --key-size <n>", "Key file size in bytes, a multiple of 8 (default: 512; only with -ck)")
 	fmt.Fprintf(w, "  %-29s %s\n", "-x, --expand <file>", "Expand a LUKS container file")
 	fmt.Fprintf(w, "  %-29s %s\n", "-xs, --expand-size <size>", "Expand size with suffix M or G (e.g. 100M, 2G)")
 	fmt.Fprintf(w, "  %-29s %s\n", "-k, --key <file>", "Path to key file")
