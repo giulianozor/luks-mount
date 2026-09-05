@@ -91,7 +91,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 				return fmt.Errorf("source %s does not exist", source)
 			}
 		}
-		// Other failures (a missing /dev nide, or EACCES on a device the
+		// Other failures (a missing /dev node, or EACCES on a device the
 		// invoking user cannot even stat) pass through: the LUKS sniff falls
 		// back to the privileged cryptsetup probe and sudo can still act.
 	} else if err := checkSourceMode(fi, source); err != nil {
