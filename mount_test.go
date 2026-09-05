@@ -1101,6 +1101,28 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("missing bare source name is rejected, not probed", func(t *testing.T) {
+		var cryptCalls int
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			if name == "cryptsetup" {
+				cryptCalls++
+			}
+			return nil, errors.New("not luks")
+		}
+
+		err := openAndMount(runCmd, runOutput, "no-such-device-node", "", filepath.Join(t.TempDir(), "mnt"))
+		if err == nil {
+			t.Fatal("expected an error, got none")
+		}
+		if !strings.Contains(err.Error(), "does not exist") {
+			t.Errorf("expected a 'does not exist' error for a missing bare name, got %v", err)
+		}
+		if cryptCalls != 0 {
+			t.Errorf("a missing bare source must not trigger a privileged probe, got %d cryptsetup calls", cryptCalls)
+		}
+	})
+
 	t.Run("skips cryptsetup calls", func(t *testing.T) {
 		var cryptCalls int
 		runCmd := func(name string, args ...string) error {

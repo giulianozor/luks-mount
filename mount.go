@@ -45,10 +45,24 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		fi, err := os.Stat(source)
 		if err != nil {
 			if os.IsNotExist(err) {
-				// A non-device source that does not exist is almost certainly a typo.
-				// Reject it up front rather than letting cryptsetup/mount fail with a
-				// cryptic error, and never leave a LUKS mapping open for nothing.
-				return fmt.Errorf("source %s does not exist", source)
+				if !strings.Contains(source, "/") {
+					// A bare name such as "sda1" may still name a /dev/
+					// device. Resolve it here so openAndMount is self-contained
+					// (mirroring umountAndClose and main's resolveSource), and
+					// only give up when that /dev node is missing too.
+					if _, devErr := os.Stat("/dev/" + source); devErr == nil {
+						source = "/dev/" + source
+						name = srcName(source)
+					} else {
+						return fmt.Errorf("source %s does not exist", source)
+					}
+				} else {
+					// A non-device source that does not exist is almost certainly a
+					// typo. Reject it up front rather than letting
+					// cryptsetup/mount fail with a cryptic error, and never leave
+					// a LUKS mapping open for nothing.
+					return fmt.Errorf("source %s does not exist", source)
+				}
 			}
 		} else if fi.IsDir() {
 			// A directory can never be a mount source (lmount does no bind
