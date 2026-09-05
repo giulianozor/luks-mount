@@ -654,10 +654,16 @@ func TestOpenAndMount_luks(t *testing.T) {
 	})
 
 	t.Run("mount point under a file is rejected up front", func(t *testing.T) {
-		var mountCalls int
+		var mountCalls, luksOpenCalls, luksCloseCalls int
 		runCmd := func(name string, args ...string) error {
 			if name == "mount" {
 				mountCalls++
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenCalls++
+			}
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
+				luksCloseCalls++
 			}
 			return nil
 		}
@@ -678,6 +684,11 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 		if mountCalls != 0 {
 			t.Errorf("mount must not be attempted under a file, got %d calls", mountCalls)
+		}
+		// luksOpen succeeded before the mount point probe; the mapping must be
+		// closed again or the error path leaks it.
+		if luksOpenCalls != 1 || luksCloseCalls != 1 {
+			t.Errorf("expected one open and one close (open=%d, close=%d)", luksOpenCalls, luksCloseCalls)
 		}
 	})
 
