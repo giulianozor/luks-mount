@@ -685,6 +685,16 @@ func TestOpenAndMount_luks(t *testing.T) {
 }
 
 func TestOpenAndMount_nonLuks(t *testing.T) {
+	t.Run("rejects the filesystem root as a source", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		err := openAndMount(runCmd, runOutput, "/", "", "")
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("expected a directory-source error for the root, got %v", err)
+		}
+	})
+
 	t.Run("mounts source directly", func(t *testing.T) {
 		var mountArgs []string
 		runCmd := func(name string, args ...string) error {
@@ -1027,6 +1037,17 @@ func TestUmountAndClose_luks(t *testing.T) {
 		}
 		if calledClose {
 			t.Error("luksClose must NOT be called while a filesystem is still mounted")
+		}
+	})
+
+	t.Run("rejects the filesystem root as a source", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+		checkMapped := func(name string) bool { return true }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, "/")
+		if err == nil || !strings.Contains(err.Error(), "is a directory") {
+			t.Errorf("expected a directory-source error for the root, got %v", err)
 		}
 	})
 
