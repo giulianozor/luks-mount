@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -104,6 +105,38 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 		if _, err := os.Stat(blocker + ".mnt"); os.IsNotExist(err) {
 			t.Error("mountpoint was not created at <path>.mnt")
+		}
+	})
+
+	t.Run("file-collision fallback to .mnt is announced", func(t *testing.T) {
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		dir := t.TempDir()
+		blocker := filepath.Join(dir, "mnt")
+		if err := os.WriteFile(blocker, []byte("block"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldStdout := os.Stdout
+		os.Stdout = w
+		defer func() { os.Stdout = oldStdout }()
+
+		err = openAndMount(runCmd, runOutput, "/dev/__test_dev__", "", blocker)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		out := buf.String()
+
+		if !strings.Contains(out, "is a file; using") || !strings.Contains(out, blocker+".mnt") {
+			t.Errorf("expected the .mnt fallback to be announced, got %q", out)
 		}
 	})
 

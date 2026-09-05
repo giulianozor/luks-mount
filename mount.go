@@ -117,6 +117,7 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 			if fi.IsDir() {
 				break
 			}
+			fmt.Printf("Path %s is a file; using %s instead.\n", mountPoint, mountPoint+".mnt")
 			mountPoint += ".mnt"
 			continue
 		}
