@@ -2025,3 +2025,23 @@ func TestWriteZerosTruncateFailure(t *testing.T) {
 		t.Error("expected a truncate extension for the sub-block remainder")
 	}
 }
+
+func TestCreateContainerRejectsAlreadyOpenMapping(t *testing.T) {
+	orig := mapperProbe
+	mapperProbe = func(string) bool { return true }
+	t.Cleanup(func() { mapperProbe = orig })
+
+	var runs int
+	run := func(name string, args ...string) error {
+		runs++
+		return nil
+	}
+
+	err := createContainer(run, run, "vault.img", "32M", "", "", 0)
+	if err == nil || !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("expected an already-in-use mapping error, got %v", err)
+	}
+	if runs != 0 {
+		t.Errorf("no command should run when the mapping name is taken, saw %d", runs)
+	}
+}

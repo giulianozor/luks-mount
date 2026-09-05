@@ -60,6 +60,14 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("container %s: %w", name, err)
 	}
 
+	// Reject a container whose future mapping is already open before dd
+	// allocates potentially gigabytes of zeros, mirroring expandContainer's
+	// refusal. Without this the failure surfaces only as a cryptic cryptsetup
+	// luksOpen "already exists" after a full allocation.
+	if mapperProbe(srcName(name)) {
+		return fmt.Errorf("container %s would open as /dev/mapper/%s, which is already in use", name, srcName(name))
+	}
+
 	// A generated key file and the container are separate objects; if they are
 	// the same file, writing the key overwrites the file that then becomes the
 	// container (and vice versa), silently corrupting the key. Compare them as
