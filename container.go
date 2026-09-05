@@ -133,6 +133,17 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		if err := runDirect("dd", "if=/dev/urandom", "of="+keyFile, fmt.Sprintf("bs=%d", keySize), "count=1"); err != nil {
 			return fmt.Errorf("creating key file: %w", err)
 		}
+		// dd masks real device failures (e.g. a full disk) with a partial file
+		// and a successful exit status, which would silently create a container
+		// that trusts a key never actually stored at the key file. Verify the
+		// size landed before including it in the LUKS header.
+		fi, err := os.Stat(keyFile)
+		if err != nil {
+			return fmt.Errorf("key file %s missing after dd: %w", keyFile, err)
+		}
+		if fi.Size() != int64(keySize) {
+			return fmt.Errorf("key file %s has %d bytes, want %d", keyFile, fi.Size(), keySize)
+		}
 		// dd creates the file with the default umask (typically world-readable);
 		// this is a decryption key, so restrict it to the owner.
 		if err := os.Chmod(keyFile, 0600); err != nil {

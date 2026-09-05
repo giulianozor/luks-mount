@@ -183,7 +183,7 @@ func TestCreateContainer(t *testing.T) {
 			calls = append(calls, cmdCall{name, args})
 			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
 				// simulate the generated key file being written to disk
-				return os.WriteFile(kf, []byte("keydata"), 0644)
+				return os.WriteFile(kf, bytes.Repeat([]byte("x"), 512), 0644)
 			}
 			return nil
 		}
@@ -589,6 +589,31 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("verify generated key file size", func(t *testing.T) {
+		dir := t.TempDir()
+		img := filepath.Join(dir, "c.img")
+		kf := filepath.Join(dir, "keyfile")
+
+		run := func(name string, args ...string) error {
+			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
+				// simulate a dd that exits 0 after a partial write
+				return os.WriteFile(kf, []byte("short"), 0600)
+			}
+			return nil
+		}
+
+		err := createContainer(run, run, img, "256M", "", kf, 512)
+		if err == nil || !strings.Contains(err.Error(), "has 5 bytes, want 512") {
+			t.Fatalf("expected a generated key size error, got %v", err)
+		}
+		if _, statErr := os.Stat(kf); !os.IsNotExist(statErr) {
+			t.Errorf("wrong-sized key file %q should have been removed", kf)
+		}
+		if _, statErr := os.Stat(img); !os.IsNotExist(statErr) {
+			t.Errorf("container %q should not exist after a key size error", img)
+		}
+	})
+
 	t.Run("dd container fails cleans up key file", func(t *testing.T) {
 		dir := t.TempDir()
 		img := filepath.Join(dir, "c.img")
@@ -596,7 +621,7 @@ func TestCreateContainer(t *testing.T) {
 
 		run := func(name string, args ...string) error {
 			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
-				return os.WriteFile(kf, []byte("keydata"), 0644)
+				return os.WriteFile(kf, bytes.Repeat([]byte("x"), 512), 0644)
 			}
 			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
 				return errors.New("dd container failed")
@@ -740,7 +765,7 @@ func TestCreateContainer(t *testing.T) {
 			}
 			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
 				// simulate the generated key file
-				return os.WriteFile(kf, []byte("keydata"), 0644)
+				return os.WriteFile(kf, bytes.Repeat([]byte("x"), 512), 0644)
 			}
 			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksClose" {
 				return errors.New("close failed")
@@ -768,7 +793,7 @@ func TestCreateContainer(t *testing.T) {
 
 		run := func(name string, args ...string) error {
 			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "urandom") {
-				return os.WriteFile(kf, []byte("keydata"), 0644)
+				return os.WriteFile(kf, bytes.Repeat([]byte("x"), 512), 0644)
 			}
 			if name == "dd" && len(args) > 0 && strings.Contains(args[0], "zero") {
 				return os.WriteFile(img, []byte("container"), 0644)
