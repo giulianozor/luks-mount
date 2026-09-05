@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -358,6 +359,38 @@ func TestRemoveIfEmpty(t *testing.T) {
 		}
 		if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
 			t.Error("current working directory should not have been removed")
+		}
+	})
+
+	t.Run("never removes the home directory", func(t *testing.T) {
+		home := t.TempDir()
+		origHome := userHomeDir
+		userHomeDir = func() (string, error) { return home, nil }
+		t.Cleanup(func() { userHomeDir = origHome })
+
+		if err := os.WriteFile(filepath.Join(home, "file"), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldStdout := os.Stdout
+		os.Stdout = w
+		defer func() { os.Stdout = oldStdout }()
+
+		if err := removeIfEmpty(home); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		if _, statErr := os.Stat(home); os.IsNotExist(statErr) {
+			t.Error("home directory should not have been removed")
+		}
+		if !strings.Contains(buf.String(), "Skipping removal of home directory") {
+			t.Errorf("expected a skip note for the home directory, got %q", buf.String())
 		}
 	})
 

@@ -228,6 +228,15 @@ func removeIfEmpty(path string) error {
 		fmt.Printf("Skipping removal of current working directory %s.\n", path)
 		return nil
 	}
+	if home, err := userHomeDir(); err == nil && home != "" {
+		if homeInfo, homeErr := os.Stat(home); homeErr == nil && pathErr == nil && os.SameFile(homeInfo, pathInfo) {
+			// A mount point set to the user's home directory must never be
+			// removed by an unmount; even an empty home is not lmount's to
+			// delete.
+			fmt.Printf("Skipping removal of home directory %s.\n", path)
+			return nil
+		}
+	}
 	if pathErr == nil && !pathInfo.IsDir() {
 		// The path exists but is not a directory (e.g. an unexpected mount
 		// target that resolved elsewhere); there is nothing to remove.
