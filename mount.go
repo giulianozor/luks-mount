@@ -276,7 +276,9 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	if encrypted && !unmountFailed {
 		fmt.Printf("Closing LUKS device %s...\n", name)
 		if err := luksClose(name); err != nil {
-			errs = append(errs, fmt.Sprintf("luksClose: %v", err))
+			// Include the mapping name so a failure during a multiple-device
+			// cleanup identifies which mapping could not be detached.
+			errs = append(errs, fmt.Sprintf("luksClose %s: %v", name, err))
 		}
 	}
 

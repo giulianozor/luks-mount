@@ -857,8 +857,8 @@ func TestUmountAndClose_luks(t *testing.T) {
 		checkMapped := func(name string) bool { return true }
 
 		err := umountAndClose(checkMapped, runCmd, runOutput, "__test_dev__")
-		if err == nil || !strings.Contains(err.Error(), "luksClose") {
-			t.Errorf("expected luksClose error, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), "luksClose __test_dev__") {
+			t.Errorf("expected a luksClose error naming the mapping, got %v", err)
 		}
 	})
 }
