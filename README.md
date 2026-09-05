@@ -94,7 +94,7 @@ Creates a LUKS-encrypted file-backed container:
 1. Creates the backing file with `dd` (zero-filled, progress shown).
 2. Formats it as a LUKS device with `cryptsetup luksFormat --batch-mode` (without `-ck`/`-k` you are prompted for a passphrase; the YES confirmation is skipped via `--batch-mode`).
 3. When `-ck`/`-k` is set, the key file is installed as the container's initial key (no passphrase prompt).
-4. Opens the device, creates an `ext4` filesystem (no reserved blocks), and closes it.
+4. Opens the device, creates an `ext4` filesystem (no reserved blocks), and closes it. Without a key, you are prompted for the passphrase again when step 4 opens the device.
 
 Minimum container size is 32M.
 

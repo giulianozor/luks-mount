@@ -76,6 +76,13 @@ func TestCreateContainer(t *testing.T) {
 		if calls[1].name != "cryptsetup" || len(calls[1].args) < 2 || calls[1].args[0] != "luksFormat" || calls[1].args[1] != "--batch-mode" {
 			t.Errorf("call 1: expected cryptsetup luksFormat --batch-mode, got %v", calls[1])
 		}
+		// Without -ck/-k no key file may reach cryptsetup: the container must
+		// prompt for a passphrase instead of silently keying from nothing.
+		for _, a := range calls[1].args {
+			if a == "--key-file" {
+				t.Errorf("luksFormat must not receive --key-file without -ck/-k, got %v", calls[1])
+			}
+		}
 		if calls[2].name != "cryptsetup" || len(calls[2].args) < 1 || calls[2].args[0] != "luksOpen" {
 			t.Errorf("call 2: expected cryptsetup luksOpen, got %v", calls[2])
 		}
