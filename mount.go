@@ -223,6 +223,9 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 	seen := make(map[string]struct{}, len(mounts))
 	targets := make([]string, 0, len(mounts))
 	for _, m := range mounts {
+		// Trim whitespace so a stray \r (CRLF) or indented line cannot produce
+		// a failing umount/rmdir on a spurious path.
+		m = strings.TrimSpace(m)
 		if m == "" {
 			continue
 		}

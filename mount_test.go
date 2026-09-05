@@ -924,6 +924,39 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("trims whitespace and CRLF from findmnt targets", func(t *testing.T) {
+		dir := t.TempDir()
+		mp := filepath.Join(dir, "mnt")
+		if err := os.MkdirAll(mp, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		var umounts []string
+		runCmd := func(name string, args ...string) error {
+			if name == "umount" && len(args) > 0 {
+				umounts = append(umounts, args[0])
+			}
+			return nil
+		}
+		// A \r-padded and an indented line must be cleaned before use.
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			return []byte(mp + "\r\n\t" + mp + "2"), nil
+		}
+		checkMapped := func(name string) bool { return false }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, "/dev/__test_dev__")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(umounts) != 2 {
+			t.Fatalf("expected 2 umount calls, got %d: %v", len(umounts), umounts)
+		}
+		cleaned := map[string]bool{umounts[0]: true, umounts[1]: true}
+		if !cleaned[mp] || !cleaned[mp+"2"] {
+			t.Errorf("umount targets should be trimmed to %q and %q, got %v", mp, mp+"2", umounts)
+		}
+	})
+
 	t.Run("unmounts nested targets before parents", func(t *testing.T) {
 		// findmnt returns mounts in arbitrary order; the deepest (child) target
 		// must be unmounted before its parent, or the parent fails as busy.
