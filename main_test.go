@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -181,6 +182,50 @@ func TestRunMainExpandsMountPointHome(t *testing.T) {
 	})
 	if !strings.Contains(code, "expanding") || !strings.Contains(code, "home directory") {
 		t.Errorf("expected a home-directory expansion error, got %q", code)
+	}
+}
+
+func TestRunMainExpandsHomeForAllPathFlags(t *testing.T) {
+	oldGOOS := goos
+	goos = "linux"
+	defer func() { goos = oldGOOS }()
+
+	home := t.TempDir()
+	oldHome, hadHome := os.LookupEnv("HOME")
+	if err := os.Setenv("HOME", home); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if hadHome {
+			os.Setenv("HOME", oldHome)
+		} else {
+			os.Unsetenv("HOME")
+		}
+	}()
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"expand", []string{"-x", "~/ghost.img", "-xs", "1G"}, filepath.Join(home, "ghost.img")},
+		{"umount", []string{"-u", "~/ghost"}, filepath.Join(home, "ghost")},
+		{"source", []string{"-s", "~/ghost"}, filepath.Join(home, "ghost")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out := captureStderr(t, func() {
+				if code := runMain(tc.args); code != 1 {
+					t.Errorf("runMain(%v) = %d, want 1 (missing file)", tc.args, code)
+				}
+			})
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("runMain(%v) output should name the expanded path %q, got %q", tc.args, tc.want, out)
+			}
+			if strings.Contains(out, "~/") || strings.Contains(out, "~"+string(filepath.Separator)) {
+				t.Errorf("runMain(%v) output still contains an unexpanded ~ path: %q", tc.args, out)
+			}
+		})
 	}
 }
 

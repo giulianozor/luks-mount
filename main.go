@@ -160,6 +160,32 @@ func runMain(args []string) int {
 	})
 	keySizeVal, keySizeSet := resolveKeySize(shortKeySizeSet, *createKeySize, longKeySizeSet, *createKeySizeLong, 512)
 
+	// A leading "~/" (or bare "~") in a path-taking argument would otherwise
+	// create or probe a literal "~" path: "-m '~/data'" mounts at a literal
+	// "~" directory, "-c '~/vault.img'" fails with a confusing "directory ~ does
+	// not exist", and an explicit "-s '~/img'" just reports a missing "~" file.
+	// Expand the home prefix uniformly so a shell-quoted argument resolves to
+	// the user's home everywhere, not only for the mount point.
+	for _, pf := range []struct {
+		label string
+		value *string
+	}{
+		{"-k/--key", keyFile},
+		{"-m/--mount", mountPoint},
+		{"-c/--create", &createVal},
+		{"-x/--expand", &expandVal},
+		{"-ck/--create-key-file", &keyFileVal},
+	} {
+		if *pf.value == "" {
+			continue
+		}
+		expanded, err := expandHome(*pf.value)
+		if err != nil {
+			return fail(fmt.Errorf("%s: %w", pf.label, err))
+		}
+		*pf.value = expanded
+	}
+
 	if sizeVal != "" && createVal == "" {
 		return failMsg("-cs/--size is only valid with -c/--create")
 	}
@@ -215,6 +241,18 @@ func runMain(args []string) int {
 		usage()
 		return 1
 	}
+	// Expand a quoted "-s '~/img'" / "-u '~/mnt'" the same way the other path
+	// arguments were expanded above (the umount/source locals are only computed
+	// after the operation-specific validations).
+	srcLabel := "-s/--source"
+	if umountVal != "" {
+		srcLabel = "-u/--umount"
+	}
+	if expanded, err := expandHome(source); err != nil {
+		return fail(fmt.Errorf("%s: %w", srcLabel, err))
+	} else {
+		source = expanded
+	}
 	if len(fs.Args()) > 0 {
 		failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
 	}
@@ -232,14 +270,7 @@ func runMain(args []string) int {
 	}
 
 	fullSrc := resolveSource(source)
-	mp := *mountPoint
-	if mp != "" {
-		var err error
-		mp, err = expandHome(mp)
-		if err != nil {
-			return fail(err)
-		}
-	}
+	mp := *mountPoint // already expanded above
 	if err := openAndMount(runCmd, runOutput, fullSrc, *keyFile, mp); err != nil {
 		return fail(err)
 	}
