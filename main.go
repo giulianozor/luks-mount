@@ -72,10 +72,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	expandVal := firstNonEmpty(*expandFlag, *expandFlagLong)
+	expandVal := strings.TrimRight(firstNonEmpty(*expandFlag, *expandFlagLong), "/")
 	expandSizeVal := firstNonEmpty(*expandSizeFlag, *expandSizeFlagLong)
 
-	createPresent := firstNonEmpty(*createFlag, *createFlagLong) != ""
+	createVal := strings.TrimRight(firstNonEmpty(*createFlag, *createFlagLong), "/")
+	createPresent := createVal != ""
 	umountPresent := firstNonEmpty(*umount, *umountLong) != ""
 	mountPresent := firstNonEmpty(*sourceFlag, *sourceFlagLong) != ""
 
@@ -104,7 +105,6 @@ func main() {
 
 	*keyFile = firstNonEmpty(*keyFile, *keyFileLong)
 	*mountPoint = firstNonEmpty(*mountPoint, *mountPointLong)
-	createVal := firstNonEmpty(*createFlag, *createFlagLong)
 	sizeVal := firstNonEmpty(*sizeFlag, *sizeFlagLong)
 	keyFileVal := firstNonEmpty(*createKeyFile, *createKeyFileLong)
 	shortKeySizeSet := false
