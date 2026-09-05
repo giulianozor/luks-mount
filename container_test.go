@@ -1033,6 +1033,22 @@ func TestExpandContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects the filesystem root as a container", func(t *testing.T) {
+		var runs []cmdCall
+		run := func(name string, args ...string) error {
+			runs = append(runs, cmdCall{name, args})
+			return nil
+		}
+
+		err := expandContainer(run, run, "/", "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "filesystem root") {
+			t.Errorf("expected a filesystem-root error, got %v", err)
+		}
+		if len(runs) != 0 {
+			t.Errorf("no commands should run for a root container, got %v", runs)
+		}
+	})
+
 	t.Run("file does not exist", func(t *testing.T) {
 		run := func(name string, args ...string) error { return nil }
 		err := expandContainer(run, run, "/nonexistent/file", "256M", "")

@@ -258,6 +258,12 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 	// the normalization openAndMount/umountAndClose apply to their sources.
 	filename = trimTrailingSeparators(filename)
 
+	// The root filesystem is never a container; say so rather than the generic
+	// "not a regular file" a stat of "/" would produce.
+	if filepath.Clean(filename) == "/" {
+		return fmt.Errorf("cannot expand the filesystem root")
+	}
+
 	fi, err := os.Stat(filename)
 	if err != nil {
 		return fmt.Errorf("stat %s: %w", filename, err)
