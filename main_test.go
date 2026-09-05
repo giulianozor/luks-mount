@@ -89,3 +89,31 @@ func TestUsageContainsCreateFlags(t *testing.T) {
 		t.Errorf("create example should document the -k alternative, got %q", createLines[0])
 	}
 }
+
+func TestUsageDocumentsKeySizeRequiresCreateKeyFile(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = oldStderr }()
+
+	usage()
+
+	w.Close()
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "-cks, --key-size") {
+			if !strings.Contains(line, "only with -ck") {
+				t.Errorf("-cks help should say it needs -ck, got %q", line)
+			}
+			return
+		}
+	}
+	t.Error("usage output does not document -cks/--key-size at all")
+}
