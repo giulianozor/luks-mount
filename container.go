@@ -35,6 +35,12 @@ func createContainer(runSudo, runDirect func(name string, args ...string) error,
 		return fmt.Errorf("minimum container size is 32M, got %s", size)
 	}
 
+	// The container's basename becomes its /dev/mapper mapping name; reject
+	// names cryptsetup could not open as a mapping before creating any files.
+	if err := checkMapperName(srcName(name)); err != nil {
+		return err
+	}
+
 	// A generated key file and the container are separate objects; if they are
 	// the same file, writing the key overwrites the file that then becomes the
 	// container (and vice versa), silently corrupting the key. Compare them as
@@ -261,6 +267,13 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 
 	if !isLuksContainer(filename) {
 		return fmt.Errorf("not a LUKS container: %s", filename)
+	}
+
+	// The container's basename becomes its /dev/mapper mapping name here just
+	// as it did at create time; reject a name cryptsetup could not open before
+	// the backing file has been grown.
+	if err := checkMapperName(srcName(filename)); err != nil {
+		return err
 	}
 
 	if keyFile != "" {

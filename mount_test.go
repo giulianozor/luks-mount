@@ -387,6 +387,27 @@ func TestOpenAndMount_luks(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects an unmappable source name before luksOpen", func(t *testing.T) {
+		var luksOpenCalls int
+		runCmd := func(name string, args ...string) error {
+			if name == "cryptsetup" && len(args) > 0 && args[0] == "luksOpen" {
+				luksOpenCalls++
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, nil }
+
+		// The source basename becomes the /dev/mapper name; a space in it could
+		// never be addressed as a single mapping, so it must fail up front.
+		err := openAndMount(runCmd, runOutput, "/dev/__bad name__", "", filepath.Join(t.TempDir(), "mnt"))
+		if err == nil || !strings.Contains(err.Error(), "invalid device-mapper name") {
+			t.Errorf("expected an invalid device-mapper name error, got %v", err)
+		}
+		if luksOpenCalls != 0 {
+			t.Errorf("luksOpen should not be attempted for an unmappable name, got %d calls", luksOpenCalls)
+		}
+	})
+
 	t.Run("cryptsetup error", func(t *testing.T) {
 		runCmd := func(name string, args ...string) error {
 			if name == "cryptsetup" {

@@ -90,6 +90,41 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a name with whitespace before creating anything", func(t *testing.T) {
+		var calls []cmdCall
+		run := func(name string, args ...string) error {
+			calls = append(calls, cmdCall{name, args})
+			return nil
+		}
+
+		// The container basename would become an unmappable /dev/mapper name.
+		img := filepath.Join(t.TempDir(), "my container.img")
+		err := createContainer(run, run, img, "256M", "", "", 512)
+		if err == nil || !strings.Contains(err.Error(), "invalid device-mapper name") {
+			t.Errorf("expected an invalid device-mapper name error, got %v", err)
+		}
+		if len(calls) != 0 {
+			t.Errorf("no commands should run for an unmappable name, got %v", calls)
+		}
+	})
+
+	t.Run("rejects a dot-dot container name before creating anything", func(t *testing.T) {
+		var calls []cmdCall
+		run := func(name string, args ...string) error {
+			calls = append(calls, cmdCall{name, args})
+			return nil
+		}
+
+		// srcName("..") is "..", which would alias /dev/mapper/.. (i.e. /dev).
+		err := createContainer(run, run, "..", "256M", "", "", 512)
+		if err == nil || !strings.Contains(err.Error(), "invalid device-mapper name") {
+			t.Errorf("expected an invalid device-mapper name error, got %v", err)
+		}
+		if len(calls) != 0 {
+			t.Errorf("no commands should run for an unmappable name, got %v", calls)
+		}
+	})
+
 	t.Run("success without key file, non-relative path", func(t *testing.T) {
 		var calls []cmdCall
 		run := func(name string, args ...string) error {
@@ -827,6 +862,28 @@ func TestExpandContainer(t *testing.T) {
 		}
 		if luksOpenSource != f {
 			t.Errorf("expected luksOpen source %q (slash normalized), got %q", f, luksOpenSource)
+		}
+	})
+
+	t.Run("rejects an unmappable container name before growing the file", func(t *testing.T) {
+		var runs []cmdCall
+		run := func(name string, args ...string) error {
+			runs = append(runs, cmdCall{name, args})
+			return nil
+		}
+
+		dir := t.TempDir()
+		f := writeLUKSFake(t, dir, "my test.img")
+
+		err := expandContainer(run, run, f, "256M", "")
+		if err == nil || !strings.Contains(err.Error(), "invalid device-mapper name") {
+			t.Errorf("expected an invalid device-mapper name error, got %v", err)
+		}
+		// The backing file must not have been grown before the name check.
+		for _, r := range runs {
+			if r.name == "truncate" {
+				t.Errorf("truncate should not run for an unmappable name, got %v", runs)
+			}
 		}
 	})
 

@@ -101,6 +101,12 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 	}
 
 	if encrypted {
+		// The source basename becomes the /dev/mapper mapping name; an
+		// unmappable name would surface only as a cryptic cryptsetup failure
+		// after a privileged attempt, so reject it up front.
+		if err := checkMapperName(name); err != nil {
+			return err
+		}
 		if mapperProbe(name) {
 			// The mapping is already open; luksOpen would only fail with a
 			// cryptic "already exists" after a wasteful privileged attempt.

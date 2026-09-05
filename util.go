@@ -70,6 +70,19 @@ func srcName(path string) string {
 	return filepath.Base(path)
 }
 
+// checkMapperName validates a device-mapper mapping name derived from a source
+// basename before it is passed to cryptsetup luksOpen. A name containing
+// whitespace or a path separator cannot be addressed as a single /dev/mapper
+// entry, and the names "." and ".." would collide with the /dev/mapper
+// directory itself. Checking up front turns these into clear errors instead of
+// cryptic cryptsetup / shell failures.
+func checkMapperName(name string) error {
+	if name == "." || name == ".." || strings.ContainsAny(name, " \t\r\n/") {
+		return fmt.Errorf("invalid device-mapper name %q", name)
+	}
+	return nil
+}
+
 // trimTrailingSeparators removes trailing path separators from s so an
 // argument like "dir/name/" is accepted wherever "dir/name" is. A root path
 // ("/") is preserved: trimming it to "" would silently turn an explicit
