@@ -151,7 +151,6 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: unexpected positional argument(s): %s\n", strings.Join(flag.Args(), " "))
 			os.Exit(1)
 		}
-		*keyFile = firstNonEmpty(*keyFile, *keyFileLong)
 		if err := expandContainer(runCmd, runDirect, expandVal, expandSizeVal, *keyFile); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -198,10 +197,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: -k/--key is not valid with -u/--umount (closing a LUKS mapping needs no key)\n")
 			os.Exit(1)
 		}
-		if *mountPoint != "" {
-			fmt.Fprintf(os.Stderr, "Error: -m/--mount is not valid with -u/--umount (the mount point is discovered from the running mount)\n")
-			os.Exit(1)
-		}
+		// -m/--mount is rejected earlier ("only valid with -s/--source"); the
+		// umount mount point is always discovered from the running mount.
 		if err := umountAndClose(checkMapped, runCmd, runOutputDirect, source); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
