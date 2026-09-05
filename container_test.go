@@ -719,6 +719,23 @@ func TestCreateContainer(t *testing.T) {
 		}
 	})
 
+	t.Run("a permission-locked parent surfaces the stat error", func(t *testing.T) {
+		dir := t.TempDir()
+		restricted := filepath.Join(dir, "restricted")
+		if err := os.MkdirAll(filepath.Join(restricted, "child"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(restricted, 0000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(restricted, 0755) })
+
+		err := checkParentDir(filepath.Join(restricted, "child", "img"), "container")
+		if err == nil || !strings.Contains(err.Error(), "checking container directory") {
+			t.Errorf("expected a checking-directory error, got %v", err)
+		}
+	})
+
 	t.Run("dd container fails", func(t *testing.T) {
 		run := func(name string, args ...string) error {
 			if name == "dd" {

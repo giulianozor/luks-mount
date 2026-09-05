@@ -170,6 +170,23 @@ func TestCheckKeyFile(t *testing.T) {
 			t.Errorf("expected an empty-file error, got %v", err)
 		}
 	})
+
+	t.Run("permission-locked path surfaces the stat error", func(t *testing.T) {
+		dir := t.TempDir()
+		restricted := filepath.Join(dir, "restricted")
+		if err := os.MkdirAll(filepath.Join(restricted, "key"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(restricted, 0000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(restricted, 0755) })
+
+		err := checkKeyFile(filepath.Join(restricted, "key"), "key file")
+		if err == nil || !strings.Contains(err.Error(), "checking key file") {
+			t.Errorf("expected a checking-key-file error, got %v", err)
+		}
+	})
 }
 
 func TestOpenAndMount_luks(t *testing.T) {
