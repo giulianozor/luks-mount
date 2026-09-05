@@ -16,6 +16,44 @@ type cmdCall struct {
 	args []string
 }
 
+func TestCheckParentDir(t *testing.T) {
+	dir := t.TempDir()
+
+	t.Run("existing directory passes", func(t *testing.T) {
+		if err := checkParentDir(filepath.Join(dir, "img"), "container"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("empty path passes via the working directory", func(t *testing.T) {
+		if err := checkParentDir("", "container"); err != nil {
+			t.Fatalf("unexpected error for an empty path: %v", err)
+		}
+	})
+
+	t.Run("missing parent directory is named", func(t *testing.T) {
+		missing := filepath.Join(dir, "sub", "img")
+		err := checkParentDir(missing, "container")
+		if err == nil || !strings.Contains(err.Error(), "does not exist") {
+			t.Fatalf("expected a does-not-exist error, got %v", err)
+		}
+	})
+
+	t.Run("parent is a file", func(t *testing.T) {
+		f := filepath.Join(dir, "afile")
+		if err := os.WriteFile(f, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		err := checkParentDir(filepath.Join(f, "img"), "key file")
+		if err == nil || !strings.Contains(err.Error(), "is not a directory") {
+			t.Fatalf("expected an is-not-a-directory error, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "key file") {
+			t.Errorf("expected the what-label in the error, got %v", err)
+		}
+	})
+}
+
 func TestCreateContainer(t *testing.T) {
 	t.Run("success without key file", func(t *testing.T) {
 		var calls []cmdCall
