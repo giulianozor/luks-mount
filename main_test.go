@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,6 +148,116 @@ func TestRunMain(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunMainOperationWiring(t *testing.T) {
+	oldGOOS := goos
+	goos = "linux"
+	defer func() { goos = oldGOOS }()
+
+	oldExpand, oldCreate, oldUmount, oldMount := expandOperation, createOperation, umountOperation, mountOperation
+	defer func() {
+		expandOperation, createOperation, umountOperation, mountOperation = oldExpand, oldCreate, oldUmount, oldMount
+	}()
+
+	okExpand := func(runSudo, runDirect func(name string, args ...string) error, filename, size, keyFile string) error {
+		return nil
+	}
+	okCreate := func(runSudo, runDirect func(name string, args ...string) error, name, size, existingKeyFile, keyFile string, keySize int) error {
+		return nil
+	}
+	okUmount := func(checkMapped func(string) bool, runCmd func(name string, args ...string) error, runOutputDirect func(name string, args ...string) ([]byte, error), source string) error {
+		return nil
+	}
+	okMount := func(runCmd func(name string, args ...string) error, runOutput func(name string, args ...string) ([]byte, error), source, keyFile, mountPoint string) error {
+		return nil
+	}
+	boom := errors.New("boom")
+	boomExpand := func(runSudo, runDirect func(name string, args ...string) error, filename, size, keyFile string) error {
+		return boom
+	}
+	boomCreate := func(runSudo, runDirect func(name string, args ...string) error, name, size, existingKeyFile, keyFile string, keySize int) error {
+		return boom
+	}
+	boomUmount := func(checkMapped func(string) bool, runCmd func(name string, args ...string) error, runOutputDirect func(name string, args ...string) ([]byte, error), source string) error {
+		return boom
+	}
+	boomMount := func(runCmd func(name string, args ...string) error, runOutput func(name string, args ...string) ([]byte, error), source, keyFile, mountPoint string) error {
+		return boom
+	}
+
+	success := []struct {
+		name string
+		args []string
+	}{
+		{"expand", []string{"-x", "/tmp/lmount-test.img", "-xs", "1G"}},
+		{"create", []string{"-c", "/tmp/lmount-test.img", "-cs", "32M"}},
+		{"mount", []string{"-s", "/dev/__test_dev__", "-m", "/mnt/x"}},
+		{"umount", []string{"-u", "/dev/__test_dev__"}},
+	}
+	for _, tc := range success {
+		t.Run("success/"+tc.name, func(t *testing.T) {
+			expandOperation, createOperation, umountOperation, mountOperation = okExpand, okCreate, okUmount, okMount
+			if code := runMain(tc.args); code != 0 {
+				t.Errorf("runMain(%v) = %d, want 0", tc.args, code)
+			}
+		})
+	}
+
+	failures := []struct {
+		name string
+		args []string
+	}{
+		{"expand", []string{"-x", "/tmp/lmount-test.img", "-xs", "1G"}},
+		{"create", []string{"-c", "/tmp/lmount-test.img", "-cs", "32M"}},
+		{"umount", []string{"-u", "/dev/__test_dev__"}},
+		{"mount", []string{"-s", "/dev/__test_dev__", "-m", "/mnt/x"}},
+	}
+	for _, tc := range failures {
+		t.Run("failure/"+tc.name, func(t *testing.T) {
+			switch tc.name {
+			case "expand":
+				expandOperation, createOperation, umountOperation, mountOperation = boomExpand, okCreate, okUmount, okMount
+			case "create":
+				expandOperation, createOperation, umountOperation, mountOperation = okExpand, boomCreate, okUmount, okMount
+			case "umount":
+				expandOperation, createOperation, umountOperation, mountOperation = okExpand, okCreate, boomUmount, okMount
+			case "mount":
+				expandOperation, createOperation, umountOperation, mountOperation = okExpand, okCreate, okUmount, boomMount
+			}
+			got := captureStderr(t, func() {
+				if code := runMain(tc.args); code != 1 {
+					t.Errorf("runMain(%v) = %d, want 1", tc.args, code)
+				}
+			})
+			if !strings.Contains(got, "Error: boom") {
+				t.Errorf("expected the operation error on stderr, got %q", got)
+			}
+		})
+	}
+
+	t.Run("source tilde expansion fails when HOME is unset", func(t *testing.T) {
+		oldHome, hadHome := os.LookupEnv("HOME")
+		if err := os.Unsetenv("HOME"); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if hadHome {
+				os.Setenv("HOME", oldHome)
+			} else {
+				os.Unsetenv("HOME")
+			}
+		}()
+
+		got := captureStderr(t, func() {
+			if code := runMain([]string{"-s", "~/data.img"}); code != 1 {
+				t.Errorf("runMain with unset HOME = %d, want 1", code)
+			}
+		})
+		if !strings.Contains(got, "home directory") {
+			t.Errorf("expected a home-directory expansion error, got %q", got)
+		}
+	})
 }
 
 func TestRunMainNonLinuxExits(t *testing.T) {

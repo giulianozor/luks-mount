@@ -12,6 +12,16 @@ import (
 // goos is the runtime operating system name; overridable for testing.
 var goos = runtime.GOOS
 
+// Operation seams: runMain dispatches through these variables so tests can
+// substitute stubs and exercise runMain's success/failure exit-code wiring
+// without ever invoking a privileged command (sudo cryptsetup, mount, dd).
+var (
+	expandOperation = expandContainer
+	createOperation = createContainer
+	umountOperation = umountAndClose
+	mountOperation  = openAndMount
+)
+
 func linuxOnlyError() error {
 	if goos == "linux" {
 		return nil
@@ -212,7 +222,7 @@ func runMain(args []string) int {
 		if len(fs.Args()) > 0 {
 			return failMsg("unexpected positional argument(s): %s", strings.Join(fs.Args(), " "))
 		}
-		if err := expandContainer(runCmd, runDirect, expandVal, expandSizeVal, *keyFile); err != nil {
+		if err := expandOperation(runCmd, runDirect, expandVal, expandSizeVal, *keyFile); err != nil {
 			return fail(err)
 		}
 		return 0
@@ -228,7 +238,7 @@ func runMain(args []string) int {
 		if keyFileVal != "" && *keyFile != "" {
 			return failMsg("-ck/--create-key-file and -k/--key cannot be used together")
 		}
-		if err := createContainer(runCmd, runDirect, createVal, sizeVal, *keyFile, keyFileVal, keySizeVal); err != nil {
+		if err := createOperation(runCmd, runDirect, createVal, sizeVal, *keyFile, keyFileVal, keySizeVal); err != nil {
 			return fail(err)
 		}
 		return 0
@@ -265,7 +275,7 @@ func runMain(args []string) int {
 		}
 		// -m/--mount is rejected earlier ("only valid with -s/--source"); the
 		// umount mount point is always discovered from the running mount.
-		if err := umountAndClose(checkMapped, runCmd, runOutputDirect, source); err != nil {
+		if err := umountOperation(checkMapped, runCmd, runOutputDirect, source); err != nil {
 			return fail(err)
 		}
 		return 0
@@ -273,7 +283,7 @@ func runMain(args []string) int {
 
 	fullSrc := resolveSource(source)
 	mp := *mountPoint // already expanded above
-	if err := openAndMount(runCmd, runOutput, fullSrc, *keyFile, mp); err != nil {
+	if err := mountOperation(runCmd, runOutput, fullSrc, *keyFile, mp); err != nil {
 		return fail(err)
 	}
 	return 0
