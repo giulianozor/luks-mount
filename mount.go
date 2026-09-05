@@ -20,6 +20,11 @@ func openAndMount(runCmd func(name string, args ...string) error, runOutput func
 		return runCmd("cryptsetup", "luksClose", name)
 	}
 
+	// A trailing separator on the source (e.g. "dir/img/" from a shell
+	// completion) would make os.Stat/open it as a directory and fail with a
+	// cryptic not-a-directory error; normalize it up front. A root path is
+	// preserved and rejected later as a directory.
+	source = trimTrailingSeparators(source)
 	name := srcName(source)
 
 	// Validate the source exists before probing LUKS: isLuks on a missing path
@@ -191,6 +196,9 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 		return runCmd("cryptsetup", "luksClose", name)
 	}
 
+	// Normalize a trailing separator on the source the same way openAndMount
+	// does, so findmnt's -S search never queries a path ending in "/".
+	source = trimTrailingSeparators(source)
 	name := srcName(source)
 	if name == "" {
 		return fmt.Errorf("cannot determine name from empty source")

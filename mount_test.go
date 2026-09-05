@@ -536,6 +536,33 @@ func TestOpenAndMount_nonLuks(t *testing.T) {
 		}
 	})
 
+	t.Run("normalizes a trailing slash on the source before probing", func(t *testing.T) {
+		dir := t.TempDir()
+		src := filepath.Join(dir, "plain.img")
+		if err := os.WriteFile(src, []byte("not luks"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		var mountArgs []string
+		runCmd := func(name string, args ...string) error {
+			if name == "mount" {
+				mountArgs = append(mountArgs, args...)
+			}
+			return nil
+		}
+		runOutput := func(name string, args ...string) ([]byte, error) { return nil, errors.New("not luks") }
+
+		// A trailing slash would make os.Stat/open treat the file as a
+		// directory (ENOTDIR); the normalized source must be mounted instead.
+		err := openAndMount(runCmd, runOutput, src+"/", "", filepath.Join(dir, "mnt"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(mountArgs) < 1 || mountArgs[0] != src {
+			t.Errorf("expected mount source %q (slash normalized), got %v", src, mountArgs)
+		}
+	})
+
 	t.Run("rejects a directory source before mounting", func(t *testing.T) {
 		var mountCalls, cryptCalls int
 		runCmd := func(name string, args ...string) error {
@@ -905,6 +932,33 @@ func TestUmountAndClose_nonLuks(t *testing.T) {
 		}
 		if !strings.Contains(searchArg, srcFile) {
 			t.Errorf("expected findmnt to search on resolved path %q, got %q", srcFile, searchArg)
+		}
+	})
+
+	t.Run("normalizes a trailing slash on the source for the search", func(t *testing.T) {
+		dir := t.TempDir()
+		srcFile := filepath.Join(dir, "sdc1")
+		os.WriteFile(srcFile, nil, 0644)
+
+		var searchArg string
+		runCmd := func(name string, args ...string) error { return nil }
+		runOutput := func(name string, args ...string) ([]byte, error) {
+			if name == "findmnt" {
+				searchArg = strings.Join(args, " ")
+			}
+			return nil, nil
+		}
+		checkMapped := func(name string) bool { return false }
+
+		err := umountAndClose(checkMapped, runCmd, runOutput, srcFile+"/")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if strings.Contains(searchArg, srcFile+"/") {
+			t.Errorf("findmnt search should not carry a trailing slash, got %q", searchArg)
+		}
+		if !strings.Contains(searchArg, srcFile) {
+			t.Errorf("expected findmnt to search on the normalized path %q, got %q", srcFile, searchArg)
 		}
 	})
 
