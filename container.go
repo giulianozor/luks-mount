@@ -422,5 +422,9 @@ func expandContainer(runSudo, runDirect func(name string, args ...string) error,
 		// successful operation (mirroring createContainer's tolerant report).
 		fmt.Fprintf(os.Stderr, "Warning: stat %s after expand: %v\n", filename, err)
 	}
+
+	// End with the same "Done." every other successful operation prints
+	// (createContainer, openAndMount, umountAndClose).
+	fmt.Println("Done.")
 	return nil
 }

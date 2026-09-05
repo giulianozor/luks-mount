@@ -1153,12 +1153,30 @@ func TestExpandContainer(t *testing.T) {
 			}
 			return nil
 		}
-		err := expandContainer(run, run, f, "256M", "")
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldStdout := os.Stdout
+		os.Stdout = w
+		defer func() { os.Stdout = oldStdout }()
+
+		err = expandContainer(run, run, f, "256M", "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if shrinkCalls != 0 {
 			t.Errorf("expected no rollback shrink on success, got %d", shrinkCalls)
+		}
+		w.Close()
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		if !strings.Contains(buf.String(), "Old size:") {
+			t.Errorf("expected an Old size/New size report, got %q", buf.String())
+		}
+		if !strings.Contains(buf.String(), "Done.") {
+			t.Errorf("expected the success closing line, got %q", buf.String())
 		}
 	})
 
