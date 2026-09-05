@@ -135,15 +135,19 @@ func resolveKeySize(shortSet bool, shortVal int, longSet bool, longVal int, dflt
 // sameFilePath reports whether two paths refer to the same file. Resolving
 // both to absolute, cleaned paths makes a relative and an absolute spelling of
 // the same file collide (e.g. "c.img" vs "/work/c.img"), which a plain string
-// comparison would miss. The parent directory is additionally resolved through
-// symlinks (e.g. /var -> /private/var on macOS) so two spellings of one
-// location compare equal even when the leaf does not exist yet, as it does not
-// for a container being created.
+// comparison would miss. When a path exists, the whole path is resolved through
+// symlinks (e.g. /var -> /private/var on macOS, or a key file that is itself a
+// symlink to the container); when the leaf does not exist yet (a container
+// being created), the parent directory is resolved instead so two spellings of
+// one location still compare equal.
 func sameFilePath(a, b string) bool {
 	canonical := func(p string) string {
 		abs, err := filepath.Abs(p)
 		if err != nil {
 			return filepath.Clean(p)
+		}
+		if eval, evalErr := filepath.EvalSymlinks(abs); evalErr == nil {
+			return eval
 		}
 		if dir := filepath.Dir(abs); dir != "" && dir != "." {
 			if eval, evalErr := filepath.EvalSymlinks(dir); evalErr == nil {

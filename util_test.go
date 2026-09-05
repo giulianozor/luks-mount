@@ -102,6 +102,30 @@ func TestSameFilePath(t *testing.T) {
 		{"different leafs", filepath.Join(real, "a"), filepath.Join(real, "b"), false},
 		{"empty vs non-empty", "", filepath.Join(real, "a"), false},
 	}
+	// A symlinked leaf that exists must resolve to the same file as the target:
+	// a key file that is itself a symlink to the container should collide.
+	target := filepath.Join(real, "container.img")
+	if err := os.WriteFile(target, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	leafLink := filepath.Join(real, "keylink.img")
+	if err := os.Symlink(target, leafLink); err != nil {
+		t.Fatal(err)
+	}
+	tests = append(tests,
+		struct {
+			name string
+			a    string
+			b    string
+			want bool
+		}{"symlinked leaf resolves to its target", leafLink, target, true},
+		struct {
+			name string
+			a    string
+			b    string
+			want bool
+		}{"symlinked leaf vs itself", leafLink, leafLink, true},
+	)
 	for _, tt := range tests {
 		if got := sameFilePath(tt.a, tt.b); got != tt.want {
 			t.Errorf("sameFilePath(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
