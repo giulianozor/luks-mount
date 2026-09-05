@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,8 +29,8 @@ func TestDirectCommandWrappers(t *testing.T) {
 
 	if _, err := runOutputDirect("lmount-definitely-not-a-command-xyz"); err == nil {
 		t.Error("runOutputDirect on a missing command should error")
-	} else if _, ok := err.(*exec.Error); !ok {
-		t.Errorf("expected an exec.Error for a missing command, got %T: %v", err, err)
+	} else if !strings.Contains(err.Error(), "executable file not found") {
+		t.Errorf("expected a missing-executable error, got %T: %v", err, err)
 	}
 }
 
