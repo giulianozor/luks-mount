@@ -373,11 +373,13 @@ func umountAndClose(checkMapped func(name string) bool, runCmd func(name string,
 				if abs, absErr := filepath.Abs(search); absErr == nil {
 					search = abs
 				}
-			} else if !strings.Contains(source, "/") {
-				// A bare name that is neither an existing path nor resolvable
-				// is treated as a device (e.g. "sda1" -> /dev/sda1).
-				search = "/dev/" + name
 			}
+			// A missing source cannot reach this point: a bare name has either
+			// already been resolved to /dev/<name> by resolveSource (when that
+			// device exists) or been rejected above, and a path-like source
+			// that failed to stat was rejected too. Whatever path-like source
+			// remains is probed as-is; findmnt reporting nothing means it is
+			// simply not mounted.
 		}
 	}
 
