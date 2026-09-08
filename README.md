@@ -1,0 +1,190 @@
+# lmount
+
+Mount, unmount, and create LUKS-encrypted devices and file-backed containers. Automatically detects LUKS encryption — when present, `luksOpen`/`luksClose` are used; plain sources are mounted directly.
+
+## Requirements
+
+This tool is **Linux-only**. It relies on Linux-specific tools and interfaces
+(`cryptsetup`, `mount`, `findmnt`, `mkfs.ext4`, `resize2fs`, `fsck.ext4`, `dd`,
+`truncate`, `sudo`, and the Device Mapper `/dev/mapper`), none of which are
+available or compatible on macOS or Windows.
+
+- `sudo` access, ideally passwordless for the commands below.
+- Go 1.26+ (see `go.mod`), to build from source.
+
+## Recommended sudoers configuration
+
+`lmount` invokes several privileged tools through `sudo`. To run it without
+password prompts, install a `sudoers` drop-in (the exact paths vary by
+distribution — verify with `command -v`):
+
+```sh
+sudo tee /etc/sudoers.d/lmount >/dev/null <<'EOF'
+# Non-interactive use of the tools lmount runs with sudo.
+# Adjust these to your distribution's actual paths and to a more restrictive
+# group if you prefer.
+%sudo ALL=(root) NOPASSWD: /usr/bin/cryptsetup, /usr/bin/mount, /usr/bin/umount, /usr/bin/chown, /usr/bin/install, /usr/sbin/mkfs.ext4, /usr/sbin/fsck.ext4, /usr/sbin/resize2fs
+EOF
+sudo chmod 0440 /etc/sudoers.d/lmount
+```
+
+The privileged commands are `cryptsetup` (for `isLuks`, `luksOpen`, and
+`luksClose`), `mount`, `umount`, `chown`, `mkfs.ext4`, `fsck.ext4`, and
+`resize2fs`; `install` is only needed for `make install`. The mount-table probe
+(`findmnt`) runs unprivileged. Container creation (`dd`) and sizing (`truncate`)
+also run as the invoking user and do not need `sudo`.
+
+> **Security note:** granting passwordless `sudo` for these binaries allows
+> anyone with access to your account to run them as root. In particular,
+> avoiding the `chown` entry (or restricting it) is recommended on shared
+> systems, since `chown` can be used to change ownership of arbitrary files.
+> The narrowest rule that still works is to grant only the commands you
+> actually use, and to prefer running `lmount` as a dedicated or unprivileged
+> user where possible.
+
+## Installation
+
+```sh
+make install
+```
+
+Or build manually:
+
+```sh
+go build -o lmount .
+sudo install -m 0755 lmount /usr/local/bin/
+```
+
+## Usage
+
+### Mount
+
+```sh
+lmount -s <source>
+lmount -s <source> -k <keyfile> -m <mountpoint>
+```
+
+- `-s` / `--source` — path to a block device (e.g. `sda1` or `/dev/sda1`) or a file-backed container.
+- `-k` / `--key` — optional path to a LUKS key file. It is only valid when the source is detected as LUKS; passing it for a non-LUKS (or nonexistent) source is an error. The key file must exist, be a regular file, and be non-empty; a character device such as `/dev/random` (fresh bytes on every read, so it can never authenticate a keyslot) is rejected up front, while a block device such as a raw key partition stays allowed. The source itself (even via a relative or symlinked spelling) is rejected as a key.
+- Path arguments (`-s`, `-u`, `-m`, `-k`, `-c`, `-x`, `-ck`) expand a leading `~/` (or a bare `~`) to your home directory, so a shell-quoted `-m '~/data'` never creates a literal `~` directory and `-c '~/vault.img'` creates the container in your home.
+- `-m` / `--mount` — mount point (default: `~/<source-basename>`). If a file already exists at the path, `.mnt` is appended automatically (bounded to 16 candidates). Mounting at the filesystem root (`-m /`) and mounting under a path that is actually a file are refused.
+
+Sources and mount points that are directories, FIFOs, sockets, empty files, or missing paths are rejected up front with clear errors instead of failing cryptically later. If the source is already open as a LUKS mapping, `lmount` reports it instead of attempting a second `luksOpen`. Whenever `lmount` creates the mount point itself, it takes ownership of it (so files written there belong to the invoking user); pre-existing directories are never re-chowned.
+
+Source resolution: if the source path does not exist as a file or directory, `/dev/<source>` is tried (so bare names like `sda1` work). For valid sources, LUKS encryption is auto-detected; nonexistent paths are rejected with a clear error before anything is mounted.
+
+Encryption is auto-detected by reading the LUKS header magic directly when the source can be read as a file. Sources that cannot be read locally (e.g. block devices behind sudo) fall back to `cryptsetup isLuks`. LUKS sources are opened with `luksOpen` before mounting; plain sources are mounted directly. `luksOpen` is kernel-synchronous, but udev may take a moment longer to materialize the `/dev/mapper/<name>` node, so `lmount` polls for it briefly and warns (rather than failing cryptically) if the node still has not appeared.
+
+### Unmount
+
+```sh
+lmount -u <source>
+```
+
+Unmounts all mount points backed by the source (or `/dev/mapper/<source>` for LUKS), removes the now-empty mount directories (non-empty ones are kept, with a note), and closes the LUKS mapping if present. For a plain file-backed mount, `findmnt` resolves the loop backing file, so `-u <path>` works with the original image path rather than the `/dev/loopN` device. An open LUKS mapping is checked before the backing path, so `lmount -u` still detaches and closes the mapping even if the backing file was deleted.
+
+### Create
+
+```sh
+lmount -c <name> -cs <size> [-no-passphrase] [-ck <keyfile>] [-k <keyfile>] [-cks <key-size>]
+```
+
+Creating a container **always sets a passphrase** (prompted during `luksFormat`)
+unless `-no-passphrase` is given. A key file is optional in passphrase mode and
+is added as an extra keyslot; with `-no-passphrase` a key file is required and
+becomes the container's only key.
+
+1. Creates the backing file with `dd` (zero-filled, progress shown).
+2. Formats it as a LUKS device with `cryptsetup luksFormat --batch-mode`. A passphrase is always asked here (the YES confirmation is skipped via `--batch-mode`) unless `-no-passphrase` was given, in which case the required key file is installed as the initial key instead and no passphrase is asked.
+3. When `-ck`/`-k` is set and a passphrase was used, the key file is added as an additional keyslot with `cryptsetup luksAddKey` (which asks for the container passphrase to authorize the addition).
+4. Opens the device, creates an `ext4` filesystem (no reserved blocks), and closes it. The open uses the key file when one was set; otherwise you are prompted for the passphrase again.
+
+On success the report names the exact size written (`Created container <path> (<n> bytes).`) and, when a key file was used, which key unlocks the container — with an explicit "key-file only; no passphrase was set" reminder when `-no-passphrase` made that key the only unlock secret.
+
+Minimum container size is 32M.
+
+- `-c` / `--create` — name of the container file to create.
+- `-cs` / `--size` — size with suffix `M` or `G` (e.g. `100M`, `2G`). The block size is chosen by tier to balance speed and waste: ≤1 GiB uses 1–32 MiB blocks, 1–10 GiB uses 256 MiB, 10–100 GiB uses 512 MiB, >100 GiB uses 1024 MiB. The image is allocated to exactly the requested size (a `truncate` extension is used when the size is not a multiple of the tier's block size).
+- `-no-passphrase` / `--no-passphrase` — create with a key file and no passphrase. Requires `-ck` or `-k`; the created container can only be opened with that key file.
+- `-ck` / `--create-key-file` — optional path for a key file. When set, a random key file is generated (mode `0600`, owner-only) and installed as a key. The file's size is verified after generation, and a too-short file aborts the create.
+- `-cks` / `--key-size` — key file size in bytes (default: 512). Only valid when `-ck` is also used, and must be a positive multiple of 8 no larger than 8192 (cryptsetup reads at most 8192 bytes of a key file and silently truncates longer ones, so a larger generated key could never unlock its own container; the value is rejected up front).
+- `-k` / `--key` — an existing key file to key the container from, instead of `-ck`. `-k` and `-ck` are mutually exclusive.
+
+The key file must not alias the container path, must not already exist (for `-ck`), and must be a non-empty regular file (for `-k`). The filesystem root cannot be used as a container name, and a container name that contains whitespace or `/`, is `.` or `..`, starts with a dash (which cryptsetup and mount would parse as an option), or is longer than 127 bytes (device-mapper's name limit) is rejected before anything is created. A key file that is a directory, FIFO, socket, or character device is likewise rejected up front, as is a container whose `luksOpen` mapping name is already in use (before any file is allocated).
+
+`-c` cannot be combined with `-s`, `-u`, or `-x` (the operation flags are mutually exclusive).
+
+### Expand
+
+```sh
+lmount -x <filename> -xs <size> [-k <keyfile>]
+```
+
+Expands an existing LUKS-encrypted file-backed container by appending zero-filled space:
+
+1. Grows the backing file by the requested amount (`truncate`, zero-filled).
+2. Opens the LUKS device (`--key-file` is respected when `-k` is set).
+3. Checks and resizes the ext4 filesystem to fill the available space, then checks again.
+4. Closes the LUKS device. If a step fails while the mapping is open, `lmount` warns so you can close it manually before touching the container.
+5. Prints the old and new file sizes.
+
+The container must already be a LUKS device with an ext4 filesystem. The expand is refused while its LUKS mapping is still open (`truncate` would grow the file underneath a live filesystem), and a key file that is the container itself is rejected before anything is touched.
+
+- `-x` / `--expand` — path to the LUKS container file to expand.
+- `-xs` / `--expand-size` — additional size with suffix `M` or `G` (e.g. `100M`, `2G`).
+- `-k` / `--key` — optional path to a LUKS key file.
+
+`-x` cannot be combined with `-s`, `-u`, or `-c` (the operation flags are mutually exclusive).
+
+## Examples
+
+```sh
+# Mount a LUKS-encrypted device
+lmount -s sda1
+
+# Mount a plain device
+lmount -s /dev/sdb1
+
+# Mount with a key file and custom mount point
+lmount -s sdb2 -k /etc/luks/key -m /mnt/data
+
+# Mount a file-backed container (LUKS or plain)
+lmount -s /path/to/container.img
+
+# Unmount and close
+lmount -u sda1
+
+# Create a 100 MiB LUKS container (prompts for a passphrase)
+lmount -c mycontainer.img -cs 100M
+
+# Create a 2 GiB LUKS passphrase-locked container with an extra key
+# file keyslot (still prompts for a passphrase while creating)
+lmount -c mycontainer.img -cs 2G -ck mykeyfile -cks 1024
+
+# Create a key-file-only container (no passphrase is ever asked)
+lmount -c mycontainer.img -cs 2G -no-passphrase -ck mykeyfile
+```
+
+## Development
+
+```sh
+make build   # compile
+make test    # run tests
+make check   # vet + gofmt cleanliness + tests (race detector + shuffled order) + Linux cross-build
+make stress  # repeat tests under -race at 1 and 8 cores
+make clean   # remove binary
+```
+
+### Test Fixtures
+
+```
+test/
+  test        32 MiB LUKS v2 container (passphrase: 1234)
+  test.key    512-byte key file for ./test/test
+```
+
+The volume contains a `test` text file with `"test"` inside. Mount with:
+
+```sh
+lmount -s test/test -k test/test.key
+```
